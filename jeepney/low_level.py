@@ -31,30 +31,6 @@ NO_AUTO_START = 2
 ALLOW_INTERACTIVE_AUTHORIZATION = 4
 
 
-class Header:
-    def __init__(self, endianness, message_type, flags, protocol_version,
-                 body_length, serial):
-        self.endianness = endianness
-        self.message_type = message_type
-        self.flags = flags
-        self.protocol_version = protocol_version
-        self.body_length = body_length
-        self.serial = serial
-
-    def __repr__(self):
-        return 'Header({!r}, {!r}, {!r}, {!r}, {!r}, {!r})'.format(
-            self.endianness, self.message_type, self.flags,
-            self.protocol_version,
-            self.body_length, self.serial)
-
-    def serialise(self):
-        s = self.endianness.struct_code() + 'cBBBII'
-        return struct.pack(s, self.endianness.dbus_code(),
-                           self.message_type.value, self.flags,
-                           self.protocol_version,
-                           self.body_length, self.serial)
-
-
 class HeaderFields(IntEnum):
     path = 1
     interface = 2
@@ -67,15 +43,6 @@ class HeaderFields(IntEnum):
     unix_fds = 9
 
 header_fields_map = {t.value: t for t in HeaderFields}
-
-
-def parse_fixed_header(buf):
-    endian, msgtype, flags, pv = struct.unpack('<cBBB', buf[:4])
-    endian = endian_map[endian]
-    bodylen, serial = struct.unpack(endian.struct_code() + 'II', buf[4:12])
-    return Header(endian, msg_type_map[msgtype], flags, pv, bodylen,
-                  serial)
-
 
 def padding(pos, step):
     pad = step - (pos % step)
@@ -311,44 +278,71 @@ def serialise_header_fields(d, endianness):
     return _header_fields_type.serialise(l, 12, endianness)
 
 
-class Message:
-    def __init__(self, fixed_header, header_fields, body_data):
-        self.fixed_header = fixed_header
-        self.header_fields = header_fields
-        self.body_data = body_data
+class Header:
+    def __init__(self, endianness, message_type, flags, protocol_version,
+                 body_length, serial, fields):
+        self.endianness = endianness
+        self.message_type = message_type
+        self.flags = flags
+        self.protocol_version = protocol_version
+        self.body_length = body_length
+        self.serial = serial
+        self.fields = fields
 
     def __repr__(self):
-        return "{}({!r}, {!r}, {!r})".format(type(self).__name__,
-                                             self.fixed_header,
-                                             self.header_fields, self.body_data)
+        return 'Header({!r}, {!r}, {!r}, {!r}, {!r}, {!r}, fields={!r})'.format(
+            self.endianness, self.message_type, self.flags,
+            self.protocol_version, self.body_length, self.serial, self.fields)
+
+    def serialise(self):
+        s = self.endianness.struct_code() + 'cBBBII'
+        return struct.pack(s, self.endianness.dbus_code(),
+                           self.message_type.value, self.flags,
+                           self.protocol_version,
+                           self.body_length, self.serial) \
+                + serialise_header_fields(self.fields, self.endianness)
 
     @classmethod
     def from_buffer(cls, buf):
-        fh = parse_fixed_header(buf)
-        hf, pos = parse_header_fields(buf, fh.endianness)
+        endian, msgtype, flags, pv = struct.unpack('cBBB', buf[:4])
+        endian = endian_map[endian]
+        bodylen, serial = struct.unpack(endian.struct_code() + 'II', buf[4:12])
+        fields, pos = parse_header_fields(buf, endian)
+        return cls(endian, msg_type_map[msgtype], flags, pv, bodylen,
+                   serial, fields), pos
+
+
+class Message:
+    def __init__(self, header, body):
+        self.header = header
+        self.body = body
+
+    def __repr__(self):
+        return "{}({!r}, {!r})".format(type(self).__name__, self.header, self.body)
+
+    @classmethod
+    def from_buffer(cls, buf):
+        header, pos = Header.from_buffer(buf)
         body = ()
-        if HeaderFields.signature.value in hf:
-            sig = hf[HeaderFields.signature.value]
+        if HeaderFields.signature in header.fields:
+            sig = header.fields[HeaderFields.signature]
             body_type = parse_signature(list('(%s)' % sig))
-            body = body_type.parse_data(buf, pos, fh.endianness)[0]
-        return cls(fh, hf, body)
+            body = body_type.parse_data(buf, pos, header.endianness)[0]
+        return cls(header, body)
 
     def serialise(self):
-        fh_buf = self.fixed_header.serialise()
-        pos = 12
-        endian = self.fixed_header.endianness
+        header_buf = self.header.serialise()
+        pos = len(header_buf)
+        endian = self.header.endianness
 
-        hf_buf = serialise_header_fields(self.header_fields, endian)
-        pos += len(hf_buf)
-
-        if HeaderFields.signature.value in self.header_fields:
-            sig = self.header_fields[HeaderFields.signature.value][1]
+        if HeaderFields.signature in self.header.fields:
+            sig = self.header.fields[HeaderFields.signature]
             body_type = parse_signature(list('(%s)' % sig))
-            body_buf = body_type.serialise(self.body_data, pos, endian)
+            body_buf = body_type.serialise(self.body, pos, endian)
         else:
             body_buf = b'\0' * padding(pos, 8)
 
-        return fh_buf + hf_buf + body_buf
+        return header_buf + body_buf
 
 
 class Parser:
