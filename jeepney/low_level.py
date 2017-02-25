@@ -81,7 +81,7 @@ simple_types = {
     'x': FixedType(8, 'q'),  # signed 64-bit
     't': FixedType(8, 'Q'),  # unsigned 64-bit
     'd': FixedType(8, 'd'),  # double
-    'h': FixedType(8, 'I'),  # file descriptor (32-bit unsigned, index)
+    'h': FixedType(8, 'I'),  # file descriptor (32-bit unsigned, index) TODO
 }
 
 
@@ -331,24 +331,25 @@ class Message:
         return cls(header, body)
 
     def serialise(self):
-        header_buf = self.header.serialise()
-        pos = len(header_buf)
         endian = self.header.endianness
 
         if HeaderFields.signature in self.header.fields:
             sig = self.header.fields[HeaderFields.signature]
             body_type = parse_signature(list('(%s)' % sig))
-            body_buf = body_type.serialise(self.body, pos, endian)
+            body_buf = body_type.serialise(self.body, 0, endian)
         else:
-            body_buf = b'\0' * padding(pos, 8)
+            body_buf = b''
 
-        return header_buf + body_buf
+        self.header.body_length = len(body_buf)
+
+        header_buf = self.header.serialise()
+        pad  = b'\0' * padding(len(header_buf), 8)
+        return header_buf + pad + body_buf
 
 
 class Parser:
     def __init__(self):
         self.buf = b''
-        self.fixed_header = None
         self.next_msg_size = None
 
     def feed(self, data):
