@@ -29,8 +29,10 @@ def get_connectable_addresses(addr):
         elif transport == 'unix':
             if 'abstract' in kv:
                 yield '\0' + kv['abstract']
+                found = True
             elif 'path' in kv:
                 yield kv['path']
+                found = True
 
     if not found:
         raise RuntimeError("DBus transports ({}) not supported. Supported: {}"
