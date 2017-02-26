@@ -187,9 +187,10 @@ class Array:
             chunks.append(self.elt_type.serialise(item, data_pos, endianness))
             data_pos += len(chunks[-1])
         buf = b''.join(chunks)
-        len_data = self.length_type.serialise(len(buf), pos, endianness)
+        len_data = self.length_type.serialise(len(buf), pos+pad1, endianness)
         pos += len(len_data)
-        pad = b'\0' * padding(pos, self.elt_type.alignment)
+        # print('Array ser: pad1={!r}, len_data={!r}, pad2={!r}, buf={!r}'.format(
+        #       pad1, len_data, pad2, buf))
         return (b'\0' * pad1) + len_data + (b'\0' * pad2) + buf
 
     def __repr__(self):
