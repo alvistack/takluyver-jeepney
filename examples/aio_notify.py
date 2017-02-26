@@ -22,13 +22,12 @@ msg = new_method_call(notifications, 'Notify', 'susssasa{sv}i', (
                      ))
 
 
-async def hello():
+async def send_notification():
     (t, p) = await connect_and_authenticate(bus='SESSION')
-    resp = await p.send_message(hello_msg)
 
     resp = await p.send_message(msg)
     print('Notification ID:', resp.body[0])
 
 
 loop = asyncio.get_event_loop()
-loop.run_until_complete(hello())
+loop.run_until_complete(send_notification())

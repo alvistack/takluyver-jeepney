@@ -7,6 +7,7 @@ __all__ = [
     'new_method_return',
     'new_error',
     'new_signal',
+    'hello_msg',
 ]
 
 class DBusObject:
@@ -70,3 +71,6 @@ def new_signal(emitter, signal, signature=None, body=()):
         header.fields[HeaderFields.signature] = signature
     return Message(header, body)
 
+# We need to say hello to the message bus before doing anythong else, so provide
+# a prebuilt message for this.
+hello_msg = new_method_call(message_bus, 'Hello')
