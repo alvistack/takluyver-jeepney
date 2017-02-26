@@ -13,6 +13,10 @@ class DBusObject:
     def with_interface(self, interface):
         return type(self)(self.bus_name, self.object_path, interface)
 
+message_bus = DBusObject('/org/freedesktop/DBus',
+                         'org.freedesktop.DBus',
+                         'org.freedesktop.DBus')
+
 def new_header(msg_type):
     return Header(Endianness.little, msg_type, flags=0, protocol_version=1,
                   body_length=-1, serial=-1, fields={})
