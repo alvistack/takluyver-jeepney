@@ -46,6 +46,14 @@ def find_system_bus():
         or 'unix:path=/var/run/dbus/system_bus_socket'
     return next(get_connectable_addresses(addr))
 
+def get_bus(addr):
+    if addr == 'SESSION':
+        return find_session_bus()
+    elif addr == 'SYSTEM':
+        return find_system_bus()
+    else:
+        return next(get_connectable_addresses(addr))
+
 
 if __name__ == '__main__':
     print('System bus at:', find_system_bus())
