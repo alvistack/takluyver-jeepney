@@ -8,6 +8,7 @@ __all__ = [
     'new_error',
     'new_signal',
     'hello_msg',
+    'Properties',
 ]
 
 class DBusObject:
@@ -21,7 +22,7 @@ class DBusObject:
                     self.object_path, self.bus_name, self.interface)
 
     def with_interface(self, interface):
-        return type(self)(self.bus_name, self.object_path, interface)
+        return type(self)(self.object_path, self.bus_name, interface)
 
 message_bus = DBusObject('/org/freedesktop/DBus',
                          'org.freedesktop.DBus',
@@ -75,3 +76,25 @@ def new_signal(emitter, signal, signature=None, body=()):
 # a prebuilt message for this.
 def hello_msg():
     return new_method_call(message_bus, 'Hello')
+
+
+class Properties:
+    """Build messages for accessing object properties
+
+    This uses the standard DBus interface org.freedesktop.DBus.Properties
+    """
+    def __init__(self, obj: DBusObject):
+        self.obj = obj
+        self.props_if = obj.with_interface('org.freedesktop.DBus.Properties')
+
+    def get(self, name):
+        return new_method_call(self.props_if, 'Get', 'ss',
+                   (self.obj.interface, name))
+
+    def get_all(self):
+        return new_method_call(self.props_if, 'GetAll', 's',
+                               (self.obj.interface,))
+
+    def set(self, name, signature, value):
+        return new_method_call(self.props_if, 'Set', 'ssv',
+                   (self.obj.interface, name, (signature, value)))
