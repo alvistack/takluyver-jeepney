@@ -57,6 +57,6 @@ async def connect_and_authenticate(bus='SESSION', loop=None):
         loop = asyncio.get_event_loop()
     (t, p) = await loop.create_unix_connection(DBusProtocol, path=get_bus(bus))
     await p.authentication
-    hello_reply = await p.send_message(hello_msg)
+    hello_reply = await p.send_message(hello_msg())
     p.unique_name = hello_reply.body[0]
     return (t, p)

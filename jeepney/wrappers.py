@@ -73,4 +73,5 @@ def new_signal(emitter, signal, signature=None, body=()):
 
 # We need to say hello to the message bus before doing anythong else, so provide
 # a prebuilt message for this.
-hello_msg = new_method_call(message_bus, 'Hello')
+def hello_msg():
+    return new_method_call(message_bus, 'Hello')
