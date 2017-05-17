@@ -14,11 +14,8 @@ login_keyring = DBusObject('/org/freedesktop/secrets/collection/login',
                            bus_name= 'org.freedesktop.secrets',
                            interface='org.freedesktop.Secret.Collection')
 
-msg = new_method_call(login_keyring, 'SearchItems', 'a{ss}',
-                      ([
-                          ('user', 'tk2e15'),
-                      ],)
-                     )
+list_items = new_method_call(login_keyring, 'SearchItems', 'a{ss}',
+                             ([],))
 
 
 conn = connect_and_authenticate(bus='SESSION')
@@ -26,5 +23,12 @@ conn = connect_and_authenticate(bus='SESSION')
 resp = conn.send_and_get_reply(Properties(secrets).get('Collections'))
 print('Collections:', resp.body[0][1])
 
-resp = conn.send_and_get_reply(msg)
-print('Search res:', resp)
+print('\nItems in login collection:')
+all_items = conn.send_and_get_reply(list_items).body[0]
+for obj_path in all_items:
+    item = DBusObject(obj_path, 'org.freedesktop.secrets',
+                      interface='org.freedesktop.Secret.Item')
+    props_resp = conn.send_and_get_reply(Properties(item).get_all())
+    props = dict(props_resp.body[0])
+    state = '(locked)' if props['Locked'][1] else ''
+    print(props['Label'][1], state)
