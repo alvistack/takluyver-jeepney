@@ -9,6 +9,7 @@ __all__ = [
     'new_signal',
     'hello_msg',
     'Properties',
+    'DBusErrorResponse',
 ]
 
 class DBusObject:
@@ -98,3 +99,6 @@ class Properties:
     def set(self, name, signature, value):
         return new_method_call(self.props_if, 'Set', 'ssv',
                    (self.obj.interface, name, (signature, value)))
+
+class DBusErrorResponse(Exception):
+    pass

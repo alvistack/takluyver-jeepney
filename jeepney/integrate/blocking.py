@@ -5,7 +5,7 @@ import socket
 from jeepney.auth import SASLParser, make_auth_external, BEGIN
 from jeepney.bus import get_bus
 from jeepney.low_level import Parser, HeaderFields, MessageType
-from jeepney.wrappers import hello_msg
+from jeepney.wrappers import hello_msg, DBusErrorResponse
 
 class DBusConnection:
     def __init__(self, sock):
@@ -40,6 +40,8 @@ class DBusConnection:
             msgs = self.recv_messages()
             for msg in msgs:
                 if serial == msg.header.fields.get(HeaderFields.reply_serial, -1):
+                    if msg.header.message_type is MessageType.error:
+                        raise DBusErrorResponse(msg.body)
                     return msg
 
 
