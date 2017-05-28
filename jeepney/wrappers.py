@@ -2,12 +2,10 @@ from .low_level import *
 
 __all__ = [
     'DBusObject',
-    'message_bus',
     'new_method_call',
     'new_method_return',
     'new_error',
     'new_signal',
-    'hello_msg',
     'Properties',
     'DBusErrorResponse',
 ]
@@ -24,10 +22,6 @@ class DBusObject:
 
     def with_interface(self, interface):
         return type(self)(self.object_path, self.bus_name, interface)
-
-message_bus = DBusObject('/org/freedesktop/DBus',
-                         'org.freedesktop.DBus',
-                         'org.freedesktop.DBus')
 
 def new_header(msg_type):
     return Header(Endianness.little, msg_type, flags=0, protocol_version=1,
@@ -72,11 +66,6 @@ def new_signal(emitter, signal, signature=None, body=()):
     if signature is not None:
         header.fields[HeaderFields.signature] = signature
     return Message(header, body)
-
-# We need to say hello to the message bus before doing anythong else, so provide
-# a prebuilt message for this.
-def hello_msg():
-    return new_method_call(message_bus, 'Hello')
 
 
 class Properties:
