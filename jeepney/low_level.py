@@ -179,7 +179,7 @@ class Array:
 
     def serialise(self, data, pos, endianness):
         if isinstance(self.elt_type, DictEntry) and isinstance(data, dict):
-            data = data.items()
+            data = sorted(data.items())
         pad1 = padding(pos, self.alignment)
         pos_after_length = pos + pad1 + 4
         pad2 = padding(pos_after_length, self.elt_type.alignment)

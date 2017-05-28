@@ -35,3 +35,20 @@ def test_multiple():
 def test_roundtrip():
     msg = Parser().feed(HELLO_METHOD_CALL)[0]
     assert msg.serialise() == HELLO_METHOD_CALL
+
+def test_serialise_dict():
+    data = {
+        'a': 'b',
+        'de': 'f',
+    }
+    string_type = simple_types['s']
+    sig = Array(DictEntry([string_type, string_type]))
+    print(sig.serialise(data, 0, Endianness.little))
+    assert sig.serialise(data, 0, Endianness.little) == (
+        b'\x1e\0\0\0' +  # Length
+        b'\0\0\0\0' +  # Padding
+        b'\x01\0\0\0a\0\0\0' +
+        b'\x01\0\0\0b\0\0\0' +
+        b'\x02\0\0\0de\0\0' +
+        b'\x01\0\0\0f\0'
+    )
