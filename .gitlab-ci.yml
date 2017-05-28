@@ -1,0 +1,9 @@
+image: python:3.5
+
+before_script:
+  - pip install pytest
+
+test_job_py35:
+  script:
+    - py.test
+  stage: test
