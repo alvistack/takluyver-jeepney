@@ -52,3 +52,17 @@ def test_serialise_dict():
         b'\x02\0\0\0de\0\0' +
         b'\x01\0\0\0f\0'
     )
+
+def test_parse_signature():
+    sig = parse_signature(list('(a{sv}(oayays)b)'))
+    print(sig)
+    assert sig == Struct([
+        Array(DictEntry([simple_types['s'], Variant()])),
+        Struct([
+            simple_types['o'],
+            Array(simple_types['y']),
+            Array(simple_types['y']),
+            simple_types['s']
+        ]),
+        simple_types['b'],
+    ])

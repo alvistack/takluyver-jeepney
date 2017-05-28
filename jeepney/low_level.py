@@ -70,6 +70,10 @@ class FixedType:
     def __repr__(self):
         return 'FixedType({!r}, {!r})'.format(self.size, self.struct_code)
 
+    def __eq__(self, other):
+        return (type(other) is FixedType) and (self.size == other.size) \
+                and (self.struct_code == other.struct_code)
+
 
 simple_types = {
     'y': FixedType(1, 'B'),  # unsigned 8 bit
@@ -104,6 +108,13 @@ class StringType:
         encoded = data.encode('utf-8')
         len_data = self.length_type.serialise(len(encoded), pos, endianness)
         return len_data + encoded + b'\0'
+
+    def __repr__(self):
+        return 'StringType({!r})'.format(self.length_type)
+
+    def __eq__(self, other):
+        return (type(other) is StringType) \
+               and (self.length_type == other.length_type)
 
 
 simple_types.update({
@@ -145,6 +156,9 @@ class Struct:
     def __repr__(self):
         return "{}({!r})".format(type(self).__name__, self.fields)
 
+    def __eq__(self, other):
+        return (type(other) is type(self)) and (self.fields == other.fields)
+
 
 class DictEntry(Struct):
     def __init__(self, fields):
@@ -156,7 +170,6 @@ class DictEntry(Struct):
                 "First field in dict entry must be simple type, not {}"
                 .format(type(fields[0])))
         super().__init__(fields)
-
 
 class Array:
     alignment = 4
@@ -198,6 +211,9 @@ class Array:
     def __repr__(self):
         return 'Array({!r})'.format(self.elt_type)
 
+    def __eq__(self, other):
+        return (type(other) is Array) and (self.elt_type == other.elt_type)
+
 
 class Variant:
     alignment = 1
@@ -220,6 +236,8 @@ class Variant:
     def __repr__(self):
         return 'Variant()'
 
+    def __eq__(self, other):
+        return type(other) is Variant
 
 def parse_signature(sig):
     # Based on http://norvig.com/lispy.html
