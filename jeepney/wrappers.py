@@ -1,3 +1,6 @@
+from typing import Union
+from warnings import warn
+
 from .low_level import *
 
 __all__ = [
@@ -10,7 +13,7 @@ __all__ = [
     'DBusErrorResponse',
 ]
 
-class DBusObject:
+class DBusAddress:
     def __init__(self, object_path, bus_name=None, interface=None):
         self.object_path = object_path
         self.bus_name = bus_name
@@ -22,6 +25,11 @@ class DBusObject:
 
     def with_interface(self, interface):
         return type(self)(self.object_path, self.bus_name, interface)
+
+class DBusObject(DBusAddress):
+    def __init__(self, object_path, bus_name=None, interface=None):
+        super().__init__(object_path, bus_name, interface)
+        warn('Deprecated alias, use DBusAddress instead', stacklevel=2)
 
 def new_header(msg_type):
     return Header(Endianness.little, msg_type, flags=0, protocol_version=1,
@@ -68,12 +76,22 @@ def new_signal(emitter, signal, signature=None, body=()):
     return Message(header, body)
 
 
+class MessageGenerator:
+    def __init__(self, object_path, bus_name):
+        self.object_path = object_path
+        self.bus_name = bus_name
+
+    def __repr__(self):
+        return "{}({!r}, bus_name={!r})".format(type(self).__name__,
+                                                self.object_path, self.bus_name)
+
+
 class Properties:
     """Build messages for accessing object properties
 
     This uses the standard DBus interface org.freedesktop.DBus.Properties
     """
-    def __init__(self, obj: DBusObject):
+    def __init__(self, obj: Union[DBusObject, MessageGenerator]):
         self.obj = obj
         self.props_if = obj.with_interface('org.freedesktop.DBus.Properties')
 
@@ -88,6 +106,12 @@ class Properties:
     def set(self, name, signature, value):
         return new_method_call(self.props_if, 'Set', 'ssv',
                    (self.obj.interface, name, (signature, value)))
+
+class Introspectable(MessageGenerator):
+    interface = 'org.freedesktop.DBus.Introspectable'
+
+    def Introspect(self):
+        return new_method_call(self, 'Introspect')
 
 class DBusErrorResponse(Exception):
     pass
