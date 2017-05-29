@@ -41,7 +41,7 @@ async def send_notification():
                           {},    # Hints
                           -1,    # expire_timeout (-1 = default)
                          )
-    print('Notification ID:', resp.body[0])
+    print('Notification ID:', resp[0])
 
 
 loop = asyncio.get_event_loop()

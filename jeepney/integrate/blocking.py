@@ -1,51 +1,52 @@
 """Synchronous IO wrappers around jeepney
 """
+from asyncio import Future
 import functools
 import socket
 
 from jeepney.auth import SASLParser, make_auth_external, BEGIN
 from jeepney.bus import get_bus
-from jeepney.low_level import Parser, HeaderFields, MessageType
-from jeepney.wrappers import DBusErrorResponse, ProxyBase
+from jeepney.low_level import Parser, MessageType
+from jeepney.wrappers import ProxyBase
+from jeepney.routing import Router
 from jeepney.bus_messages import message_bus
 
 class DBusConnection:
     def __init__(self, sock):
         self.sock = sock
         self.parser = Parser()
-        self.outgoing_serial = 0
+        self.router = Router(Future)
         self.bus_proxy = Proxy(message_bus, self)
         hello_reply = self.bus_proxy.Hello()
-        self.unique_name = hello_reply.body[0]
+        self.unique_name = hello_reply[0]
 
     def send_message(self, message):
-        if message.header.serial == -1:
-            self.outgoing_serial += 1
-            message.header.serial = self.outgoing_serial
+        future = self.router.outgoing(message)
         data = message.serialise()
         self.sock.sendall(data)
+        return future
 
     def recv_messages(self):
+        """Read data from the socket and handle incoming messages.
+        
+        Blocks until at least one message has been read.
+        """
         while True:
             b = self.sock.recv(4096)
             msgs = self.parser.feed(b)
             if msgs:
-                return msgs
+                for msg in msgs:
+                    self.router.incoming(msg)
+                return
 
     def send_and_get_reply(self, message):
         """Send a message, wait for the reply and return it.
-
-        This will discard any other incoming messages until it finds the reply.
         """
-        self.send_message(message)
-        serial = message.header.serial
-        while True:
-            msgs = self.recv_messages()
-            for msg in msgs:
-                if serial == msg.header.fields.get(HeaderFields.reply_serial, -1):
-                    if msg.header.message_type is MessageType.error:
-                        raise DBusErrorResponse(msg.body)
-                    return msg
+        future = self.send_message(message)
+        while not future.done():
+            self.recv_messages()
+
+        return future.result()
 
 class Proxy(ProxyBase):
     def __init__(self, msggen, connection):

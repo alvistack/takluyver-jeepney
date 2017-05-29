@@ -26,7 +26,7 @@ async def send_notification():
     (t, p) = await connect_and_authenticate(bus='SESSION')
 
     resp = await p.send_message(Properties(secrets).get('Collections'))
-    print('Collections:', resp.body[0][1])
+    print('Collections:', resp[0][1])
 
     resp = await p.send_message(msg)
     print('Search res:', resp)

@@ -141,4 +141,9 @@ class Introspectable(MessageGenerator):
         return new_method_call(self, 'Introspect')
 
 class DBusErrorResponse(Exception):
-    pass
+    def __init__(self, msg):
+        self.name = msg.header.fields.get(HeaderFields.error_name)
+        self.data = msg.body
+
+    def __str__(self):
+        return '[{}] {}'.format(self.name, self.data)

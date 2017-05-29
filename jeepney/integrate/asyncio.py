@@ -2,16 +2,16 @@ import asyncio
 
 from jeepney.auth import SASLParser, make_auth_external, BEGIN
 from jeepney.bus import get_bus
-from jeepney.low_level import Parser, HeaderFields, MessageType
+from jeepney.low_level import Parser, MessageType
 from jeepney.wrappers import ProxyBase
+from jeepney.routing import Router
 from jeepney.bus_messages import message_bus
 
 class DBusProtocol(asyncio.Protocol):
     def __init__(self):
         self.auth_parser = SASLParser()
         self.parser = Parser()
-        self.outgoing_serial = 0
-        self.awaiting_reply = {}
+        self.router = Router(asyncio.Future)
         self.authentication = asyncio.Future()
         self.unique_name = None
 
@@ -34,24 +34,16 @@ class DBusProtocol(asyncio.Protocol):
 
     def data_received_post_auth(self, data):
         for msg in self.parser.feed(data):
-            reply_serial = msg.header.fields.get(HeaderFields.reply_serial, -1)
-            if reply_serial in self.awaiting_reply:
-                self.awaiting_reply[reply_serial].set_result(msg)
+            self.router.incoming(msg)
 
     def send_message(self, message):
         if not self.authentication.done():
             raise RuntimeError("Wait for authentication before sending messages")
 
-        fut = None
-        if message.header.serial == -1:
-            self.outgoing_serial += 1
-            message.header.serial = self.outgoing_serial
-        if message.header.message_type == MessageType.method_call:
-            fut = asyncio.Future()
-            self.awaiting_reply[message.header.serial] = fut
+        future = self.router.outgoing(message)
         data = message.serialise()
         self.transport.write(data)
-        return fut
+        return future
 
 class Proxy(ProxyBase):
     def __init__(self, msggen, protocol):
@@ -77,5 +69,5 @@ async def connect_and_authenticate(bus='SESSION', loop=None):
     await p.authentication
     bus = Proxy(message_bus, p)
     hello_reply = await bus.Hello()
-    p.unique_name = hello_reply.body[0]
+    p.unique_name = hello_reply[0]
     return (t, p)
