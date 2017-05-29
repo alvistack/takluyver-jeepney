@@ -120,7 +120,8 @@ class Properties:
     """
     def __init__(self, obj: Union[DBusAddress, MessageGenerator]):
         self.obj = obj
-        self.props_if = obj.with_interface('org.freedesktop.DBus.Properties')
+        self.props_if = DBusAddress(obj.object_path, bus_name=obj.bus_name,
+                                    interface='org.freedesktop.DBus.Properties')
 
     def get(self, name):
         return new_method_call(self.props_if, 'Get', 'ss',
