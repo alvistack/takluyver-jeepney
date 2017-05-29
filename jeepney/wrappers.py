@@ -118,7 +118,7 @@ class Properties:
 
     This uses the standard DBus interface org.freedesktop.DBus.Properties
     """
-    def __init__(self, obj: Union[DBusObject, MessageGenerator]):
+    def __init__(self, obj: Union[DBusAddress, MessageGenerator]):
         self.obj = obj
         self.props_if = obj.with_interface('org.freedesktop.DBus.Properties')
 
