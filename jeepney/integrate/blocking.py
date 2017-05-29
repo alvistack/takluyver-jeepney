@@ -82,3 +82,7 @@ def connect_and_authenticate(bus='SESSION'):
     conn = DBusConnection(sock)
     conn.parser.buf = auth_parser.buffer
     return conn
+
+if __name__ == '__main__':
+    conn = connect_and_authenticate()
+    print("Unique name:", conn.unique_name)
