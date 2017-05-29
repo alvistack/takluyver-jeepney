@@ -1,11 +1,12 @@
 """Synchronous IO wrappers around jeepney
 """
+import functools
 import socket
 
 from jeepney.auth import SASLParser, make_auth_external, BEGIN
 from jeepney.bus import get_bus
 from jeepney.low_level import Parser, HeaderFields, MessageType
-from jeepney.wrappers import DBusErrorResponse
+from jeepney.wrappers import DBusErrorResponse, ProxyBase
 from jeepney.bus_messages import message_bus
 
 class DBusConnection:
@@ -13,7 +14,8 @@ class DBusConnection:
         self.sock = sock
         self.parser = Parser()
         self.outgoing_serial = 0
-        hello_reply = self.send_and_get_reply(message_bus.Hello())
+        self.bus_proxy = Proxy(message_bus, self)
+        hello_reply = self.bus_proxy.Hello()
         self.unique_name = hello_reply.body[0]
 
     def send_message(self, message):
@@ -44,6 +46,23 @@ class DBusConnection:
                     if msg.header.message_type is MessageType.error:
                         raise DBusErrorResponse(msg.body)
                     return msg
+
+class Proxy(ProxyBase):
+    def __init__(self, msggen, connection):
+        super().__init__(msggen)
+        self._connection = connection
+
+    def __repr__(self):
+        return "Proxy({}, {})".format(self._msggen, self._connection)
+
+    def _method_call(self, make_msg):
+        @functools.wraps(make_msg)
+        def inner(*args, **kwargs):
+            msg = make_msg(*args, **kwargs)
+            assert msg.header.message_type is MessageType.method_call
+            return self._connection.send_and_get_reply(msg)
+
+        return inner
 
 
 def connect_and_authenticate(bus='SESSION'):

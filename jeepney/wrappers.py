@@ -9,6 +9,7 @@ __all__ = [
     'new_method_return',
     'new_error',
     'new_signal',
+    'MessageGenerator',
     'Properties',
     'DBusErrorResponse',
 ]
@@ -77,6 +78,10 @@ def new_signal(emitter, signal, signature=None, body=()):
 
 
 class MessageGenerator:
+    """Subclass this to define the methods available on a DBus interface.
+    
+    jeepney.bindgen can automatically create subclasses using introspection.
+    """
     def __init__(self, object_path, bus_name):
         self.object_path = object_path
         self.bus_name = bus_name
@@ -85,6 +90,28 @@ class MessageGenerator:
         return "{}({!r}, bus_name={!r})".format(type(self).__name__,
                                                 self.object_path, self.bus_name)
 
+
+class ProxyBase:
+    """A proxy is an IO-aware wrapper around a MessageGenerator
+    
+    Calling methods on a proxy object will send a message and wait for the
+    reply. This is a base class for proxy implementations in jeepney.integrate.
+    """
+    def __init__(self, msggen):
+        self._msggen = msggen
+
+    def __getattr__(self, item):
+        if item.startswith('__'):
+            raise AttributeError(item)
+
+        make_msg = getattr(self._msggen, item, None)
+        if callable(make_msg):
+            return self._method_call(make_msg)
+
+        raise AttributeError(item)
+
+    def _method_call(self, make_msg):
+        raise NotImplementedError("Needs to be implemented in subclass")
 
 class Properties:
     """Build messages for accessing object properties

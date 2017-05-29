@@ -3,6 +3,7 @@ import asyncio
 from jeepney.auth import SASLParser, make_auth_external, BEGIN
 from jeepney.bus import get_bus
 from jeepney.low_level import Parser, HeaderFields, MessageType
+from jeepney.wrappers import ProxyBase
 from jeepney.bus_messages import message_bus
 
 class DBusProtocol(asyncio.Protocol):
@@ -52,11 +53,29 @@ class DBusProtocol(asyncio.Protocol):
         self.transport.write(data)
         return fut
 
+class Proxy(ProxyBase):
+    def __init__(self, msggen, protocol):
+        super().__init__(msggen)
+        self._protocol = protocol
+
+    def __repr__(self):
+        return 'Proxy({}, {})'.format(self._msggen, self._protocol)
+
+    def _method_call(self, make_msg):
+        def inner(*args, **kwargs):
+            msg = make_msg(*args, **kwargs)
+            assert msg.header.message_type is MessageType.method_call
+            return self._protocol.send_message(msg)
+
+        return inner
+
+
 async def connect_and_authenticate(bus='SESSION', loop=None):
     if loop is None:
         loop = asyncio.get_event_loop()
     (t, p) = await loop.create_unix_connection(DBusProtocol, path=get_bus(bus))
     await p.authentication
-    hello_reply = await p.send_message(message_bus.Hello())
+    bus = Proxy(message_bus, p)
+    hello_reply = await bus.Hello()
     p.unique_name = hello_reply.body[0]
     return (t, p)

@@ -1,29 +1,46 @@
 import asyncio
 
-from jeepney import new_method_call, DBusObject
-from jeepney.integrate.asyncio import connect_and_authenticate
-
-notifications = DBusObject('/org/freedesktop/Notifications',
-                           bus_name= 'org.freedesktop.Notifications',
-                           interface='org.freedesktop.Notifications')
+from jeepney import MessageGenerator, new_method_call
+from jeepney.integrate.asyncio import connect_and_authenticate, Proxy
 
 
-msg = new_method_call(notifications, 'Notify', 'susssasa{sv}i', (
-                       'jeepney_test',  # App name
-                       0,      # Not replacing any previous notification
-                       '',    # Icon
-                       'Hello, world!',  # Summary
-                       'This is an example notification from Jeepney', # Body
-                       [],    # Actions
-                       {},    # Hints
-                       -1,    # expire_timeout (-1 = default)
-                     ))
+# Generated code from jeepney.bindgen
+class Notifications(MessageGenerator):
+    interface = 'org.freedesktop.Notifications'
+
+    def __init__(self, object_path='/org/freedesktop/Notifications',
+                 bus_name='org.freedesktop.Notifications'):
+        super().__init__(object_path=object_path, bus_name=bus_name)
+
+    def Notify(self, arg_0, arg_1, arg_2, arg_3, arg_4, arg_5, arg_6, arg_7):
+        return new_method_call(self, 'Notify', 'susssasa{sv}i',
+                               (arg_0, arg_1, arg_2, arg_3, arg_4, arg_5, arg_6, arg_7))
+
+    def CloseNotification(self, arg_0):
+        return new_method_call(self, 'CloseNotification', 'u',
+                               (arg_0,))
+
+    def GetCapabilities(self):
+        return new_method_call(self, 'GetCapabilities')
+
+    def GetServerInformation(self):
+        return new_method_call(self, 'GetServerInformation')
+# End generated code
 
 
 async def send_notification():
     (t, p) = await connect_and_authenticate(bus='SESSION')
+    proxy = Proxy(Notifications(), p)
 
-    resp = await p.send_message(msg)
+    resp = await proxy.Notify('jeepney_test',  # App name
+                          0,      # Not replacing any previous notification
+                          '',    # Icon
+                          'Hello, world!',  # Summary
+                          'This is an example notification from Jeepney', # Body
+                          [],    # Actions
+                          {},    # Hints
+                          -1,    # expire_timeout (-1 = default)
+                         )
     print('Notification ID:', resp.body[0])
 
 
