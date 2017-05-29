@@ -6,14 +6,14 @@ from jeepney.auth import SASLParser, make_auth_external, BEGIN
 from jeepney.bus import get_bus
 from jeepney.low_level import Parser, HeaderFields, MessageType
 from jeepney.wrappers import DBusErrorResponse
-from jeepney.bus_messages import hello
+from jeepney.bus_messages import message_bus
 
 class DBusConnection:
     def __init__(self, sock):
         self.sock = sock
         self.parser = Parser()
         self.outgoing_serial = 0
-        hello_reply = self.send_and_get_reply(hello())
+        hello_reply = self.send_and_get_reply(message_bus.Hello())
         self.unique_name = hello_reply.body[0]
 
     def send_message(self, message):

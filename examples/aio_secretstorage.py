@@ -4,7 +4,7 @@ https://freedesktop.org/wiki/Specifications/secret-storage-spec/secrets-api-0.1.
 """
 import asyncio
 
-from jeepney import new_method_call, DBusObject, message_bus, Properties
+from jeepney import new_method_call, DBusObject, Properties
 from jeepney.integrate.asyncio import connect_and_authenticate
 
 secrets = DBusObject('/org/freedesktop/secrets',

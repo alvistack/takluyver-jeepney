@@ -1,13 +1,11 @@
 import asyncio
 
-from jeepney import new_method_call, DBusObject, message_bus
+from jeepney import new_method_call, DBusObject
 from jeepney.integrate.asyncio import connect_and_authenticate
 
 notifications = DBusObject('/org/freedesktop/Notifications',
                            bus_name= 'org.freedesktop.Notifications',
                            interface='org.freedesktop.Notifications')
-
-hello_msg = new_method_call(message_bus, 'Hello')
 
 
 msg = new_method_call(notifications, 'Notify', 'susssasa{sv}i', (
