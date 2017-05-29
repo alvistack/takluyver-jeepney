@@ -4,7 +4,7 @@ from warnings import warn
 from .low_level import *
 
 __all__ = [
-    'DBusObject',
+    'DBusAddress',
     'new_method_call',
     'new_method_return',
     'new_error',

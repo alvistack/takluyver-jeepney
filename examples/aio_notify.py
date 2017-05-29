@@ -3,8 +3,7 @@ import asyncio
 from jeepney import MessageGenerator, new_method_call
 from jeepney.integrate.asyncio import connect_and_authenticate, Proxy
 
-
-# Generated code from jeepney.bindgen
+# ---- Message generator, created by jeepney.bindgen ----
 class Notifications(MessageGenerator):
     interface = 'org.freedesktop.Notifications'
 
@@ -25,24 +24,22 @@ class Notifications(MessageGenerator):
 
     def GetServerInformation(self):
         return new_method_call(self, 'GetServerInformation')
-# End generated code
+# ---- End auto generated code ----
 
 
 async def send_notification():
-    (t, p) = await connect_and_authenticate(bus='SESSION')
-    proxy = Proxy(Notifications(), p)
+    (transport, protocol) = await connect_and_authenticate(bus='SESSION')
+    proxy = Proxy(Notifications(), protocol)
 
     resp = await proxy.Notify('jeepney_test',  # App name
                           0,      # Not replacing any previous notification
-                          '',    # Icon
+                          '',     # Icon
                           'Hello, world!',  # Summary
-                          'This is an example notification from Jeepney', # Body
-                          [],    # Actions
-                          {},    # Hints
-                          -1,    # expire_timeout (-1 = default)
+                          'This is an example notification from Jeepney',
+                          [], {},  # Actions, hints
+                          -1,      # expire_timeout (-1 = default)
                          )
     print('Notification ID:', resp[0])
-
 
 loop = asyncio.get_event_loop()
 loop.run_until_complete(send_notification())
