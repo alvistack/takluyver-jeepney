@@ -105,6 +105,8 @@ class StringType:
         return val, end + 1
 
     def serialise(self, data, pos, endianness):
+        if not isinstance(data, str):
+            raise TypeError("Expected str, not {!r}".format(data))
         encoded = data.encode('utf-8')
         len_data = self.length_type.serialise(len(encoded), pos, endianness)
         return len_data + encoded + b'\0'
@@ -141,6 +143,8 @@ class Struct:
         return tuple(res), pos
 
     def serialise(self, data, pos, endianness):
+        if not isinstance(data, tuple):
+            raise TypeError("Expected tuple, not {!r}".format(data))
         if len(data) != len(self.fields):
             raise ValueError("{} entries for {} fields".format(
                 len(data), len(self.fields)
@@ -193,6 +197,11 @@ class Array:
     def serialise(self, data, pos, endianness):
         if isinstance(self.elt_type, DictEntry) and isinstance(data, dict):
             data = sorted(data.items())
+        elif (self.elt_type == simple_types['y']) and isinstance(data, bytes):
+            pass
+        elif not isinstance(data, list):
+            raise TypeError("Not suitable for array: {!r}".format(data))
+
         pad1 = padding(pos, self.alignment)
         pos_after_length = pos + pad1 + 4
         pad2 = padding(pos_after_length, self.elt_type.alignment)
@@ -240,6 +249,8 @@ class Variant:
         return type(other) is Variant
 
 def parse_signature(sig):
+    """Parse a symbolic signature into objects.
+    """
     # Based on http://norvig.com/lispy.html
     token = sig.pop(0)
     if token == 'a':
