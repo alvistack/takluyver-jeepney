@@ -79,6 +79,7 @@ from jeepney.wrappers import MessageGenerator, new_method_call
 IGNORE_INTERFACES = {
     'org.freedesktop.DBus.Introspectable',
     'org.freedesktop.DBus.Properties',
+    'org.freedesktop.DBus.Peer',
 }
 
 def generate(path, name, output_file, bus='SESSION'):
