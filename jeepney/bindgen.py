@@ -85,7 +85,7 @@ IGNORE_INTERFACES = {
 def generate(path, name, output_file, bus='SESSION'):
     conn = connect_and_authenticate(bus)
     msg = Introspectable(path, name).Introspect()
-    xml = conn.send_and_get_reply(msg).body[0]
+    xml = conn.send_and_get_reply(msg)[0]
     #print(xml)
 
     root = ET.fromstring(xml)
