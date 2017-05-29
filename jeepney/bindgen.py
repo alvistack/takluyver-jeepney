@@ -82,26 +82,32 @@ IGNORE_INTERFACES = {
     'org.freedesktop.DBus.Peer',
 }
 
+def code_from_xml(xml, path, bus_name, fh):
+    if isinstance(fh, (bytes, str)):
+        with open(fh, 'w') as f:
+            return code_from_xml(xml, path, bus_name, f)
+
+    root = ET.fromstring(xml)
+    fh.write(MODULE_TEMPLATE.format(version=__version__, path=path,
+                                    bus_name=bus_name))
+
+    i = 0
+    for interface_node in root.findall('interface'):
+        if interface_node.attrib['name'] in IGNORE_INTERFACES:
+            continue
+        fh.write(Interface(interface_node, path, bus_name).make_code())
+        i += 1
+
+    return i
+
 def generate(path, name, output_file, bus='SESSION'):
     conn = connect_and_authenticate(bus)
     msg = Introspectable(path, name).Introspect()
     xml = conn.send_and_get_reply(msg)[0]
-    #print(xml)
+    # print(xml)
 
-    root = ET.fromstring(xml)
-
-    with open(output_file, 'w') as f:
-        f.write(MODULE_TEMPLATE.format(version=__version__, path=path,
-                                       bus_name=name))
-
-        i = 0
-        for interface_node in root.findall('interface'):
-            if interface_node.attrib['name'] in IGNORE_INTERFACES:
-                continue
-            f.write(Interface(interface_node, path, name).make_code())
-            i += 1
-
-    print("Written {} interface wrappers to {}".format(i, output_file))
+    n_interfaces = code_from_xml(xml, path, name, output_file)
+    print("Written {} interface wrappers to {}".format(n_interfaces, output_file))
 
 def main():
     ap = argparse.ArgumentParser()
