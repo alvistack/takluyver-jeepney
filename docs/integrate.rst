@@ -1,5 +1,5 @@
-High-level interfaces
-=====================
+Connecting to DBus and sending messages
+=======================================
 
 So far, Jeepney can be used with three different I/O systems:
 

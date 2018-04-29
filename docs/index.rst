@@ -10,12 +10,18 @@ handle I/O. Jeepney tries to be *non-magical*, so you may have to write a bit
 more code than with other interfaces such as `dbus-python <https://pypi.python.org/pypi/dbus-python>`_
 or `pydbus <https://github.com/LEW21/pydbus>`_.
 
+Jeepney doesn't rely on libdbus or other compiled libraries, so it's easy
+to install with Python tools like ``pip``. To use it, the DBus daemon needs to
+be running on your computer; this is a standard part of most modern Linux
+desktops.
+
 Contents:
 
 .. toctree::
    :maxdepth: 2
 
    integrate
+   messages
    bindgen
 
 .. seealso::

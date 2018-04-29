@@ -345,6 +345,11 @@ class Header:
 
 
 class Message:
+    """Object representing a DBus message.
+
+    It's not normally necessary to construct this directly: use higher level
+    functions and methods instead.
+    """
     def __init__(self, header, body):
         self.header = header
         self.body = body
@@ -363,6 +368,7 @@ class Message:
         return cls(header, body)
 
     def serialise(self):
+        """Convert this message to bytes."""
         endian = self.header.endianness
 
         if HeaderFields.signature in self.header.fields:
@@ -380,11 +386,17 @@ class Message:
 
 
 class Parser:
+    """Parse DBus messages from a stream of incoming data.
+    """
     def __init__(self):
         self.buf = b''
         self.next_msg_size = None
 
     def feed(self, data):
+        """Feed the parser newly read data.
+
+        Returns a list of messages completed by the new data.
+        """
         self.buf += data
         return list(iter(self._read1, None))
 

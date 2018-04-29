@@ -15,6 +15,14 @@ __all__ = [
 ]
 
 class DBusAddress:
+    """This identifies the object and interface a message is for.
+
+    e.g. messages to display desktop notifications would have this address::
+
+        DBusAddress('/org/freedesktop/Notifications',
+                    bus_name='org.freedesktop.Notifications',
+                    interface='org.freedesktop.Notifications')
+    """
     def __init__(self, object_path, bus_name=None, interface=None):
         self.object_path = object_path
         self.bus_name = bus_name
@@ -37,6 +45,13 @@ def new_header(msg_type):
                   body_length=-1, serial=-1, fields={})
 
 def new_method_call(remote_obj, method, signature=None, body=()):
+    """Construct a new method call message
+
+    :param DBusAddress remote_obj: The object to call a method on
+    :param str method: The name of the method to call
+    :param str signature: The DBus signature of the body data
+    :param tuple body: Body data (i.e. method parameters)
+    """
     header = new_header(MessageType.method_call)
     header.fields[HeaderFields.path] = remote_obj.object_path
     if remote_obj.bus_name is None:
@@ -51,6 +66,12 @@ def new_method_call(remote_obj, method, signature=None, body=()):
     return Message(header, body)
 
 def new_method_return(parent_msg, signature=None, body=()):
+    """Construct a new response message
+
+    :param Message parent_msg: The method call this is a reply to
+    :param str signature: The DBus signature of the body data
+    :param tuple body: Body data
+    """
     header = new_header(MessageType.method_return)
     header.fields[HeaderFields.reply_serial] = parent_msg.header.serial
     if signature is not None:
@@ -58,6 +79,12 @@ def new_method_return(parent_msg, signature=None, body=()):
     return Message(header, body)
 
 def new_error(parent_msg, error_name, signature=None, body=()):
+    """Construct a new error response message
+
+    :param Message parent_msg: The method call this is a reply to
+    :param str signature: The DBus signature of the body data
+    :param tuple body: Body data
+    """
     header = new_header(MessageType.error)
     header.fields[HeaderFields.reply_serial] = parent_msg.header.serial
     header.fields[HeaderFields.error_name] = error_name
@@ -66,6 +93,13 @@ def new_error(parent_msg, error_name, signature=None, body=()):
     return Message(header, body)
 
 def new_signal(emitter, signal, signature=None, body=()):
+    """Construct a new method call message
+
+    :param DBusAddress emitter: The object sending the signal
+    :param str signal: The name of the signal
+    :param str signature: The DBus signature of the body data
+    :param tuple body: Body data
+    """
     header = new_header(MessageType.signal)
     header.fields[HeaderFields.path] = emitter.object_path
     if emitter.interface is None:
