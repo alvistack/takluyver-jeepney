@@ -1,6 +1,8 @@
 from enum import Enum, IntEnum
 import struct
 
+class SizeLimitError(ValueError):
+    pass
 
 class Endianness(Enum):
     little = 1
@@ -202,14 +204,22 @@ class Array:
         elif not isinstance(data, list):
             raise TypeError("Not suitable for array: {!r}".format(data))
 
+        # Fail fast if we know in advance that the data is too big:
+        if isinstance(self.elt_type, FixedType):
+            if (self.elt_type.size * len(data)) > 2**26:
+                raise SizeLimitError("Array size exceeds 64 MiB limit")
+
         pad1 = padding(pos, self.alignment)
         pos_after_length = pos + pad1 + 4
         pad2 = padding(pos_after_length, self.elt_type.alignment)
         data_pos = pos_after_length + pad2
+        limit_pos = data_pos + 2**26
         chunks = []
         for item in data:
             chunks.append(self.elt_type.serialise(item, data_pos, endianness))
             data_pos += len(chunks[-1])
+            if data_pos > limit_pos:
+                raise SizeLimitError("Array size exceeds 64 MiB limit")
         buf = b''.join(chunks)
         len_data = self.length_type.serialise(len(buf), pos+pad1, endianness)
         pos += len(len_data)

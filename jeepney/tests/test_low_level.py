@@ -1,3 +1,4 @@
+import pytest
 from jeepney.low_level import *
 
 HELLO_METHOD_CALL = (
@@ -66,3 +67,21 @@ def test_parse_signature():
         ]),
         simple_types['b'],
     ])
+
+class fake_list(list):
+    def __init__(self, n):
+        super().__init__()
+        self._n = n
+
+    def __len__(self):
+        return self._n
+
+    def __iter__(self):
+        return iter(range(self._n))
+
+def test_array_limit():
+    # The spec limits arrays to 64 MiB
+    a = Array(FixedType(8, 'Q'))  # 'at' - array of uint64
+    a.serialise(fake_list(100), 0, Endianness.little)
+    with pytest.raises(SizeLimitError):
+        a.serialise(fake_list(2**23 + 1), 0, Endianness.little)
