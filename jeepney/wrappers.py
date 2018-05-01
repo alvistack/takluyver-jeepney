@@ -93,7 +93,7 @@ def new_error(parent_msg, error_name, signature=None, body=()):
     return Message(header, body)
 
 def new_signal(emitter, signal, signature=None, body=()):
-    """Construct a new method call message
+    """Construct a new signal message
 
     :param DBusAddress emitter: The object sending the signal
     :param str signal: The name of the signal
