@@ -1,8 +1,16 @@
+import pytest
 from jeepney import auth
 
 def test_make_auth_external():
     b = auth.make_auth_external()
     assert b.startswith(b'AUTH EXTERNAL')
+
+def test_make_auth_anonymous():
+    with pytest.raises(RuntimeError):
+        auth.make_auth_anonymous()
+    auth.make_auth_anonymous.ALLOW = True
+    b = auth.make_auth_anonymous()
+    assert b.startswith(b'AUTH ANONYMOUS')
 
 def test_parser():
     p = auth.SASLParser()
