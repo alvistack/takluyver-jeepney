@@ -4,7 +4,7 @@ from asyncio import Future
 import functools
 import socket
 
-from jeepney.auth import SASLParser, make_auth_external, BEGIN
+from jeepney.auth import SASLParser, make_auth_external, BEGIN, AuthenticationError
 from jeepney.bus import get_bus
 from jeepney.low_level import Parser, MessageType
 from jeepney.wrappers import ProxyBase
@@ -75,7 +75,7 @@ def connect_and_authenticate(bus='SESSION'):
     while not auth_parser.authenticated:
         auth_parser.feed(sock.recv(1024))
         if auth_parser.error:
-            raise Exception("Authentication failed: %r" % auth_parser.error)
+            raise AuthenticationError("Authentication failed: %r" % auth_parser.error)
 
     sock.sendall(BEGIN)
 
