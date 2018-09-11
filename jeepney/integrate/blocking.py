@@ -75,7 +75,7 @@ def connect_and_authenticate(bus='SESSION'):
     while not auth_parser.authenticated:
         auth_parser.feed(sock.recv(1024))
         if auth_parser.error:
-            raise AuthenticationError("Authentication failed: %r" % auth_parser.error)
+            raise AuthenticationError(auth_parser.error)
 
     sock.sendall(BEGIN)
 

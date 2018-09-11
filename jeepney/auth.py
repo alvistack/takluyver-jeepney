@@ -9,6 +9,11 @@ BEGIN = b'BEGIN\r\n'
 
 class AuthenticationError(ValueError):
     """Raised when DBus authentication fails"""
+    def __init__(self, data):
+        self.data = data
+
+    def __str__(self):
+        return "Authentication failed. Bus sent: %r" % self.data
 
 class SASLParser:
     def __init__(self):
