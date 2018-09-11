@@ -21,6 +21,6 @@ class SASLParser:
 
     def feed(self, data):
         self.buffer += data
-        while (b'\r\n' in data) and not self.authenticated:
+        while (b'\r\n' in self.buffer) and not self.authenticated:
             line, self.buffer = self.buffer.split(b'\r\n', 1)
             self.process_line(line)
