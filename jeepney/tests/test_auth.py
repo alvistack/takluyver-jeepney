@@ -10,3 +10,8 @@ def test_parser():
     assert not p.authenticated
     p.feed(b'1ebbb0b42958b1e0d6\r\n')
     assert p.authenticated
+
+def test_parser_rejected():
+    p = auth.SASLParser()
+    p.feed(b'REJECTED EXTERNAL\r\n')
+    assert not p.authenticated
