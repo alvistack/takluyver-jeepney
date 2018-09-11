@@ -7,6 +7,9 @@ def make_auth_external():
 
 BEGIN = b'BEGIN\r\n'
 
+class AuthenticationError(ValueError):
+    """Raised when DBus authentication fails"""
+
 class SASLParser:
     def __init__(self):
         self.buffer = b''
