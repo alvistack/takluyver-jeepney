@@ -2,7 +2,7 @@ from binascii import hexlify
 import os
 
 def make_auth_external():
-    hex_uid = hexlify(str(os.getuid()).encode('ascii'))
+    hex_uid = hexlify(str(os.geteuid()).encode('ascii'))
     return b'AUTH EXTERNAL %b\r\n' % hex_uid
 
 BEGIN = b'BEGIN\r\n'
