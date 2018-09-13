@@ -1,95 +1,77 @@
-# See the blocking example for a note on match rules.
+# The note at the top of blocking_subscribe.py also applies to this example.
 
 import asyncio
 
 from jeepney.integrate.asyncio import connect_and_authenticate, Proxy
-from jeepney.bus_messages import DBus, MatchRule
+from jeepney.bus_messages import message_bus, MatchRule
 from aio_notify import Notifications
 
-some_words = ('Beautiful', 'implicit', 'complicated', 'Readability',
-              'practicality', 'silently', 'explicitly', 'silenced',
-              'ambiguity', 'temptation', 'preferably', 'obvious',
-              'implementation', 'Namespaces')
 
-
-def print_match(*args, idees, seen):
+def print_match(match_info):
     """A demo callback.
-
-    More info: <https://developer.gnome.org/notification-spec>
+    Called with a single tuple on successful matches.
     """
-    reasons = (
+    reasons = (  # <https://developer.gnome.org/notification-spec>
         "Expired",
         "Dismissed by the user",
         "Closed by a call to CloseNotification",
         "Undefined/reserved reasons"
     )
-    idee, reason = args[0]
-
-    assert len(args) == 1
-    assert type(idee) is int and type(reason) is int
-    assert (idee, reason) not in seen
-    assert idee == idees[-1]
-
-    word = idee - idees[0]
-    widths = print_match.widths
-    print("<- ID: {:{dlen}}, Word: {:{wlen}} Reason: {!r}."
-          .format(idee, "%r," % some_words[word], reasons[reason], **widths))
-    seen.add((idee, reason))
+    idee, reason = match_info
+    print("<- %d %s" % (idee, reasons[reason]))
 
 
 async def main():
     __, proto = await connect_and_authenticate("SESSION")
-    session_bus = Proxy(DBus(), proto)
-    notify_service = Proxy(Notifications(), proto)
+    session_bus = Proxy(message_bus, proto)
+    notify_msggen = Notifications()
+    notify_service = Proxy(notify_msggen, proto)
 
     # Create a "signal-selection" match rule used by *Match methods below
     match_rule = MatchRule(
         type="signal",
-        sender=notify_service._msggen.bus_name,
-        interface=notify_service._msggen.interface,
+        sender=notify_msggen.bus_name,
+        interface=notify_msggen.interface,
         member="NotificationClosed",
-        path=notify_service._msggen.object_path,
+        path=notify_msggen.object_path,
     )
 
     # Prep and register callback
-    idees = []
-    maxit = 6  # stop subscribing after this many turns
-    from functools import partial
-    callback = partial(print_match, idees=idees, seen=set())
     proto.router.subscribe_signal(
-        callback=callback,
-        path=notify_service._msggen.object_path,
-        interface=notify_service._msggen.interface,
+        callback=print_match,
+        path=notify_msggen.object_path,
+        interface=notify_msggen.interface,
         member="NotificationClosed"
     )
 
-    for num, tag in enumerate(some_words, 1):
-        # Mute log entries for outgoing messages while subscribed
-        if num <= 1 or num > maxit:
-            print("-> {:2}, {!r}".format(num, tag))
+    idee, *__ = await notify_service.Notify("aio_subscribe", 0, "",
+                                            "Foo", "foo", [], {}, -1,)
+    print("->", idee, "+")  # ~~> notified
+    await asyncio.sleep(1)
+    print("->", idee, "-")  # ~~> closing
+    await notify_service.CloseNotification(idee)
 
-        resp = await notify_service.Notify("jeepney_test", 0, "",
-                                           "Test #: %d" % num,
-                                           "Message: %r" % tag,
-                                           [], {}, -1,)
-        sent_id, *__ = resp
+    print("# Starting subscription")
+    await session_bus.AddMatch(match_rule)
+    await asyncio.sleep(1)
 
-        if not idees:
-            from math import log10, ceil
-            print_match.widths = dict(wlen=max(len(w) for w in some_words) + 1,
-                                      dlen=ceil(log10(sent_id + maxit)))
+    idee, *__ = await notify_service.Notify("aio_subscribe", 0, "",
+                                            "Bar", "bar", [], {}, -1,)
+    print("->", idee, "+")
+    await asyncio.sleep(1)
+    print("->", idee, "-")
+    await notify_service.CloseNotification(idee)
 
-        idees.append(sent_id)
-        await asyncio.sleep(3/num)  # shift gears
-        await notify_service.CloseNotification(sent_id)
+    print("# Cancelling subscription")
+    await session_bus.RemoveMatch(match_rule)
+    await asyncio.sleep(1)
 
-        if num == 1:
-            assert tuple() == await session_bus.AddMatch(match_rule)  # success
-            print("/* Starting subscription after 1 turn */")
-
-        if num == maxit:
-            assert tuple() == await session_bus.RemoveMatch(match_rule)
-            print("/* Cancelling subscription after %d turns */" % maxit)
+    idee, *__ = await notify_service.Notify("aio_subscribe", 0, "",
+                                            "Baz", "baz", [], {}, -1,)
+    print("->", idee, "+")
+    await asyncio.sleep(1)
+    print("->", idee, "-")
+    await notify_service.CloseNotification(idee)
 
 
 if __name__ == "__main__":

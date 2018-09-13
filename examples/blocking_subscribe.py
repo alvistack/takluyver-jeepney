@@ -1,58 +1,54 @@
 """
-See the aio-subscribe example for proxy usage.
+This example relies on the ``org.freedesktop.Notifications.NotificationClosed``
+signal, which may require full Desktop Notifications support.
 
-Match rules are pretty byzantine, e.g., ``path`` and ``path_namespace`` are
-mutually exclusive. See spec_
+The following footnote from the ``.ActionInvoked`` section of the
+`notification-spec`_ may pertain to this signal as well:
 
-.. _spec: https://dbus.freedesktop.org/doc/dbus-specification.html
+    Clients should not assume the server will generate this signal. Some
+    servers may not support user interaction at all, or may not support the
+    concept of being able to "invoke" a notification.
+
+See the `match-rules-spec`_ for match-rules details.
+
+.. _notification-spec: https://people.gnome.org/~mccann/docs/notification-spec/
+   notification-spec-latest.html
+
+.. _match-rules-spec: https://dbus.freedesktop.org/doc/dbus-specification.html
    #message-bus-routing-match-rules
-
-Add session id to target unicast messages (those only addressed to you)::
-
-  destination=connection.unique_name
-
-Won't work in the example below, because we're just tuning in to broadcasts.
 """
 
-from jeepney import DBusAddress, new_method_call
-from jeepney.integrate.blocking import connect_and_authenticate
-from jeepney.bus_messages import MatchRule
-from collections import namedtuple
+from jeepney.integrate.blocking import connect_and_authenticate, Proxy
+from jeepney.bus_messages import MatchRule, message_bus
+from aio_notify import Notifications
 
-addresses = {
-    "DBus": DBusAddress("/org/freedesktop/DBus",
-                        bus_name="org.freedesktop.DBus",
-                        interface="org.freedesktop.DBus"),
-    "Notifications": DBusAddress("/org/freedesktop/Notifications",
-                                 bus_name="org.freedesktop.Notifications",
-                                 interface="org.freedesktop.Notifications")
-}
-addresses = namedtuple("Addresses", addresses)(**addresses)
+
+noti = Notifications()
 
 connection = connect_and_authenticate(bus="SESSION")
 
 match_rule = MatchRule(
     type="signal",
-    sender=addresses.Notifications.bus_name,
-    interface=addresses.Notifications.interface,
+    sender=noti.bus_name,
+    interface=noti.interface,
     member="NotificationClosed",
-    path=addresses.Notifications.object_path,
-).serialise()
+    path=noti.object_path,
+)
 
-msg = new_method_call(addresses.DBus, "AddMatch", "s", (match_rule,))
+session_bus = Proxy(message_bus, connection)
+# Pre-made DBus msggen ^~~~~~~~
 
-reply = connection.send_and_get_reply(msg)
-print("Request reply is empty on success:", reply == tuple())
+print("Match added?", session_bus.AddMatch(match_rule) == ())
 
 connection.router.subscribe_signal(
     callback=print,
-    path=addresses.Notifications.object_path,
-    interface=addresses.Notifications.interface,
+    path=noti.object_path,
+    interface=noti.interface,
     member="NotificationClosed"
 )
 
-# Using dbus-send or d-feet or another example script, send some notifications
-# and either manually close them or call ``.CloseNotification`` after a beat.
+# Using dbus-send or d-feet or blocking_notify.py, send a notification and
+# manually close it or call ``.CloseNotification`` after a beat.
 try:
     while True:
         connection.recv_messages()
