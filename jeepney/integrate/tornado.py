@@ -4,7 +4,7 @@ from tornado.gen import coroutine
 from tornado.ioloop import IOLoop
 from tornado.iostream import IOStream
 
-from jeepney.auth import SASLParser, make_auth_external, BEGIN
+from jeepney.auth import SASLParser, make_auth_external, BEGIN, AuthenticationError
 from jeepney.bus import get_bus
 from jeepney.low_level import Parser, MessageType
 from jeepney.wrappers import ProxyBase
@@ -41,7 +41,7 @@ class DBusConnection:
         if self.auth_parser.authenticated:
             self._authenticated()
         elif self.auth_parser.error:
-            self.authentication.set_exception(ValueError(self.auth_parser.error))
+            self.authentication.set_exception(AuthenticationError(self.auth_parser.error))
 
     def data_received_post_auth(self, data):
         for msg in self.parser.feed(data):

@@ -7,6 +7,14 @@ def make_auth_external():
 
 BEGIN = b'BEGIN\r\n'
 
+class AuthenticationError(ValueError):
+    """Raised when DBus authentication fails"""
+    def __init__(self, data):
+        self.data = data
+
+    def __str__(self):
+        return "Authentication failed. Bus sent: %r" % self.data
+
 class SASLParser:
     def __init__(self):
         self.buffer = b''
@@ -21,6 +29,6 @@ class SASLParser:
 
     def feed(self, data):
         self.buffer += data
-        while (b'\r\n' in data) and not self.authenticated:
+        while (b'\r\n' in self.buffer) and not self.authenticated:
             line, self.buffer = self.buffer.split(b'\r\n', 1)
             self.process_line(line)
