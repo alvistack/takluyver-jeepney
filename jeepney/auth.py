@@ -11,37 +11,71 @@ def make_auth_anonymous():
     The value of "initial-response" (the last arg) is some arbitrary but
     readable string referred to as "message trace" in the RFC:
     <https://tools.ietf.org/html/rfc4505#section-2>.
+
+    An example of how this mechanism might be used as a fallback::
+
+        class SASLParserAnonAuth(SASLParser):
+            def __init__(self):
+                super().__init__()
+                self.rejected = None
+
+            def process_line(self, line):
+                self.rejected = None
+                if line.startswith(b"REJECTED"):
+                    self.rejected = line
+                else:
+                    super().process_line(line)
+
+            def feed(self, data):
+                self.buffer += data
+                while ((b'\r\n' in self.buffer)
+                       and not self.authenticated
+                       and self.rejected is None):
+                    line, self.buffer = self.buffer.split(b'\r\n', 1)
+                    self.process_line(line)
+
+        class DBusProtocolAnonAuth(DBusProtocol):
+            def __init__(self):
+                from jeepney.auth import SASLParserAnonAuth
+                super().__init__()
+                self.auth_parser = SASLParserAnonAuth()
+
+            def data_received(self, data):
+                self.auth_parser.feed(data)
+                if self.auth_parser.authenticated:
+                    self._authenticated()
+                    return
+                if (not self.auth_parser.error and
+                        self.auth_parser.rejected is not None):
+                    if b"ANONYMOUS" in self.auth_parser.rejected:
+                        from jeepney.auth import make_auth_anonymous
+                        self.transport.write(make_auth_anonymous())
+                        self.auth_parser.rejected = None
+                    else:
+                        self.auth_parser.error = self.auth_parser.rejected
+                if self.auth_parser.error:
+                    self.authentication.set_exception(
+                        AuthenticationError(self.auth_parser.error))
     """
-    if make_auth_anonymous.ALLOW is False:
-        raise RuntimeError("The ANONYMOUS authentication mechanism is not "
-                           "supported by default. See source for details.")
     tag = bytes(b'libdbus 1.x.x'.hex(), "UTF-8")  # dbus_get_version
     return b'AUTH ANONYMOUS %s\r\n' % tag
 
-make_auth_anonymous.ALLOW = False
-
 BEGIN = b'BEGIN\r\n'
-
 
 class SASLParser:
     def __init__(self):
         self.buffer = b''
         self.authenticated = False
-        self.rejected = None
         self.error = None
 
     def process_line(self, line):
-        self.rejected = None
-        if make_auth_anonymous.ALLOW and line.startswith(b"REJECTED"):
-            self.rejected = line
-        elif line.startswith(b'OK '):
+        if line.startswith(b'OK '):
             self.authenticated = True
         else:
             self.error = line
 
     def feed(self, data):
         self.buffer += data
-        while ((b'\r\n' in data) and not self.authenticated
-               and self.rejected is None):
+        while (b'\r\n' in data) and not self.authenticated:
             line, self.buffer = self.buffer.split(b'\r\n', 1)
             self.process_line(line)

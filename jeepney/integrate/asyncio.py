@@ -31,13 +31,6 @@ class DBusProtocol(asyncio.Protocol):
             self._authenticated()
         elif self.auth_parser.error:
             self.authentication.set_exception(ValueError(self.auth_parser.error))
-        elif self.auth_parser.rejected is not None:
-            if b"ANONYMOUS" in self.auth_parser.rejected:
-                from jeepney.auth import make_auth_anonymous
-                self.transport.write(make_auth_anonymous())
-                self.auth_parser.rejected = None
-            else:
-                self.auth_parser.error = self.auth_parser.rejected
 
     def data_received_post_auth(self, data):
         for msg in self.parser.feed(data):

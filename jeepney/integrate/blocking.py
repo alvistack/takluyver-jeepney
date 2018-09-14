@@ -76,13 +76,6 @@ def connect_and_authenticate(bus='SESSION'):
         auth_parser.feed(sock.recv(1024))
         if auth_parser.error:
             raise Exception("Authentication failed: %r" % auth_parser.error)
-        elif auth_parser.rejected is not None:
-            if b"ANONYMOUS" in auth_parser.rejected:
-                from jeepney.auth import make_auth_anonymous
-                sock.sendall(make_auth_anonymous())
-                auth_parser.rejected = None
-            else:
-                auth_parser.error = auth_parser.rejected
 
     sock.sendall(BEGIN)
 
