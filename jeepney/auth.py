@@ -6,17 +6,15 @@ def make_auth_external():
     return b'AUTH EXTERNAL %b\r\n' % hex_uid
 
 def make_auth_anonymous():
-    r"""Format an AUTH command line for the ANONYMOUS mechanism
+    """Format an AUTH command line for the ANONYMOUS mechanism
 
-    The value of "initial-response" (the last arg) is some arbitrary but
-    readable string referred to as "message trace" in the RFC:
-    <https://tools.ietf.org/html/rfc4505#section-2>.
+    Jeepney's higher-level wrappers don't currently use this mechanism,
+    but third-party code may choose to.
 
-    For an example showing this mechanism used as a fallback, see:
-    <FIXME>
+    See <https://tools.ietf.org/html/rfc4505> for details.
     """
-    tag = bytes(b'libdbus 1.x.x'.hex(), "UTF-8")  # dbus_get_version
-    return b'AUTH ANONYMOUS %s\r\n' % tag
+    trace = b'jeepney 0.x'.hex().encode()
+    return b'AUTH ANONYMOUS %s\r\n' % trace
 
 BEGIN = b'BEGIN\r\n'
 
