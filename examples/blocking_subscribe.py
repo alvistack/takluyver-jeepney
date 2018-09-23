@@ -1,29 +1,26 @@
 """
+Example of subscribing to a D-Bus signal using blocking I/O.
+This subscribes to the signal for a desktop notification being closed.
+
+To try it, start this script, then trigger a desktop notification, and close it
+somehow to trigger the signal. Use Ctrl-C to stop the script.
+
 This example relies on the ``org.freedesktop.Notifications.NotificationClosed``
-signal, which may require full Desktop Notifications support.
+signal; some desktops may not support it. See the notification spec for more
+details:
+https://people.gnome.org/~mccann/docs/notification-spec/notification-spec-latest.html
 
-The following footnote from the ``.ActionInvoked`` section of the
-`notification-spec`_ may pertain to this signal as well:
-
-    Clients should not assume the server will generate this signal. Some
-    servers may not support user interaction at all, or may not support the
-    concept of being able to "invoke" a notification.
-
-See the `match-rules-spec`_ for match-rules details.
-
-.. _notification-spec: https://people.gnome.org/~mccann/docs/notification-spec/
-   notification-spec-latest.html
-
-.. _match-rules-spec: https://dbus.freedesktop.org/doc/dbus-specification.html
-   #message-bus-routing-match-rules
+Match rules are defined in the D-Bus specification:
+https://dbus.freedesktop.org/doc/dbus-specification.html#message-bus-routing-match-rules
 """
 
-from jeepney.integrate.blocking import connect_and_authenticate, Proxy
 from jeepney.bus_messages import MatchRule, message_bus
-from aio_notify import Notifications
+from jeepney.integrate.blocking import connect_and_authenticate, Proxy
+from jeepney.wrappers import DBusAddress
 
-
-noti = Notifications()
+noti = DBusAddress('/org/freedesktop/Notifications',
+                   bus_name='org.freedesktop.Notifications',
+                   interface='org.freedesktop.Notifications')
 
 connection = connect_and_authenticate(bus="SESSION")
 
@@ -35,13 +32,22 @@ match_rule = MatchRule(
     path=noti.object_path,
 )
 
+# This defines messages for talking to the D-Bus bus daemon itself:
 session_bus = Proxy(message_bus, connection)
-# Pre-made DBus msggen ^~~~~~~~
 
+# Tell the session bus to pass us matching signal messages:
 print("Match added?", session_bus.AddMatch(match_rule) == ())
 
+reasons = {1: 'expiry', 2: 'dismissal', 3: 'dbus', '4': 'undefined'}
+def notification_closed(data):
+    """Callback for when we receive a notification closed signal"""
+    nid, reason_no = data
+    reason = reasons.get(reason_no, 'unknown')
+    print('Notification {} closed by: {}'.format(nid, reason))
+
+# Connect the callback to the relevant signal
 connection.router.subscribe_signal(
-    callback=print,
+    callback=notification_closed,
     path=noti.object_path,
     interface=noti.interface,
     member="NotificationClosed"

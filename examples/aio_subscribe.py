@@ -57,6 +57,7 @@ async def main():
         member="NameOwnerChanged"
     )
 
+    # Tell the session bus to pass us matching signal messages.
     print("[watcher] adding match rule")
     await watcher.AddMatch(match_rule)
     await asyncio.sleep(1)
