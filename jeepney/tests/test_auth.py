@@ -4,6 +4,10 @@ def test_make_auth_external():
     b = auth.make_auth_external()
     assert b.startswith(b'AUTH EXTERNAL')
 
+def test_make_auth_anonymous():
+    b = auth.make_auth_anonymous()
+    assert b.startswith(b'AUTH ANONYMOUS')
+
 def test_parser():
     p = auth.SASLParser()
     p.feed(b'OK 728d62bc2eb394')

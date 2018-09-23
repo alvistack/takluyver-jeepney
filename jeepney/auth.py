@@ -5,6 +5,17 @@ def make_auth_external():
     hex_uid = hexlify(str(os.geteuid()).encode('ascii'))
     return b'AUTH EXTERNAL %b\r\n' % hex_uid
 
+def make_auth_anonymous():
+    """Format an AUTH command line for the ANONYMOUS mechanism
+
+    Jeepney's higher-level wrappers don't currently use this mechanism,
+    but third-party code may choose to.
+
+    See <https://tools.ietf.org/html/rfc4505> for details.
+    """
+    trace = b'jeepney 0.x'.hex().encode()
+    return b'AUTH ANONYMOUS %s\r\n' % trace
+
 BEGIN = b'BEGIN\r\n'
 
 class AuthenticationError(ValueError):
