@@ -13,7 +13,8 @@ def make_auth_anonymous():
 
     See <https://tools.ietf.org/html/rfc4505> for details.
     """
-    trace = b'jeepney 0.x'.hex().encode()
+    from . import __version__
+    trace = hexlify(('Jeepney %s' % __version__).encode('ascii'))
     return b'AUTH ANONYMOUS %s\r\n' % trace
 
 BEGIN = b'BEGIN\r\n'
