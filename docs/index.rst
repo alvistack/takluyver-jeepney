@@ -24,6 +24,7 @@ Contents:
    limitations
    messages
    bindgen
+   release-notes
 
 .. seealso::
 
