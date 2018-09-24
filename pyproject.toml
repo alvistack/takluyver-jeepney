@@ -16,3 +16,6 @@ classifiers = [
     "Topic :: Desktop Environment"
 ]
 
+[tool.flit.metadata.urls]
+Documentation = "https://jeepney.readthedocs.io/en/latest/"
+
