@@ -74,6 +74,9 @@ def new_method_return(parent_msg, signature=None, body=()):
     """
     header = new_header(MessageType.method_return)
     header.fields[HeaderFields.reply_serial] = parent_msg.header.serial
+    sender = parent_msg.header.fields.get(HeaderFields.sender, None)
+    if sender is not None:
+        header.fields[HeaderFields.destination] = sender
     if signature is not None:
         header.fields[HeaderFields.signature] = signature
     return Message(header, body)
@@ -88,6 +91,9 @@ def new_error(parent_msg, error_name, signature=None, body=()):
     header = new_header(MessageType.error)
     header.fields[HeaderFields.reply_serial] = parent_msg.header.serial
     header.fields[HeaderFields.error_name] = error_name
+    sender = parent_msg.header.fields.get(HeaderFields.sender, None)
+    if sender is not None:
+        header.fields[HeaderFields.destination] = sender
     if signature is not None:
         header.fields[HeaderFields.signature] = signature
     return Message(header, body)
