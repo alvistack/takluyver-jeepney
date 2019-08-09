@@ -21,15 +21,14 @@ class _Future:
     def set_exception(self, exception):
         self._result = (False, exception)
 
-    def set_result(self, result):
-        raise 
+    def set_result(self, result): 
         self._result = (True, result)
 
     def result(self):
-        should_raise, value = self._result
-        if should_raise:
-            raise value
-        return value
+        success, value = self._result
+        if success:
+            return value
+        raise value
 
 
 class DBusConnection:
