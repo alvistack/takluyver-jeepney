@@ -1,6 +1,5 @@
 """Synchronous IO wrappers around jeepney
 """
-from asyncio import Future
 import functools
 import socket
 
@@ -11,11 +10,32 @@ from jeepney.wrappers import ProxyBase
 from jeepney.routing import Router
 from jeepney.bus_messages import message_bus
 
+
+class _Future:
+    def __init__(self):
+        self._result = None
+
+    def done(self):
+        return bool(self._result)
+
+    def set_exception(self, exception):
+        self._result = (False, exception)
+
+    def set_result(self, result): 
+        self._result = (True, result)
+
+    def result(self):
+        success, value = self._result
+        if success:
+            return value
+        raise value
+
+
 class DBusConnection:
     def __init__(self, sock):
         self.sock = sock
         self.parser = Parser()
-        self.router = Router(Future)
+        self.router = Router(_Future)
         self.bus_proxy = Proxy(message_bus, self)
         hello_reply = self.bus_proxy.Hello()
         self.unique_name = hello_reply[0]
