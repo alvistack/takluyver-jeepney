@@ -1,6 +1,15 @@
 Release notes
 =============
 
+0.4.1
+-----
+
+* Avoid using :class:`asyncio.Future` for the blocking integration.
+* Set the 'destination' field on method return and error messages to the
+  'sender' from the parent message.
+
+Thanks to Oscar Caballero and Thomas Grainger for contributing to this release.
+
 0.4
 ---
 
