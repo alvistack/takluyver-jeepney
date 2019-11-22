@@ -60,3 +60,5 @@ try:
         connection.recv_messages()
 except KeyboardInterrupt:
     pass
+
+connection.close()

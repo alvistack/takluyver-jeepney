@@ -22,3 +22,5 @@ msg = new_method_call(notifications, 'Notify', 'susssasa{sv}i',
 # Send the message and wait for the reply
 reply = connection.send_and_get_reply(msg)
 print('Notification ID:', reply[0])
+
+connection.close()

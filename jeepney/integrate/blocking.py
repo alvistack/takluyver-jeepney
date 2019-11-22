@@ -40,6 +40,13 @@ class DBusConnection:
         hello_reply = self.bus_proxy.Hello()
         self.unique_name = hello_reply[0]
 
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.close()
+        return False
+
     def send_message(self, message):
         future = self.router.outgoing(message)
         data = message.serialise()
@@ -67,6 +74,9 @@ class DBusConnection:
             self.recv_messages()
 
         return future.result()
+
+    def close(self):
+        self.sock.close()
 
 class Proxy(ProxyBase):
     def __init__(self, msggen, connection):

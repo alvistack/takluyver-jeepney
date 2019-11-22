@@ -32,3 +32,5 @@ for obj_path in all_items:
     props = dict(props_resp[0])
     state = '(locked)' if props['Locked'][1] else ''
     print(props['Label'][1], state)
+
+conn.close()
