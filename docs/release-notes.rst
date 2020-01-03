@@ -1,6 +1,16 @@
 Release notes
 =============
 
+0.4.2
+-----
+
+* The blocking ``DBusConnection`` integration class now has a ``.close()``
+  method, and can be used as a context manager::
+
+    from jeepney.integrate.blocking import connect_and_authenticate
+    with connect_and_authenticate() as connection:
+        ...
+
 0.4.1
 -----
 
