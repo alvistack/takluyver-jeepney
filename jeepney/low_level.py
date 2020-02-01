@@ -402,15 +402,23 @@ class Parser:
         self.buf = b''
         self.next_msg_size = None
 
+    def add_data(self, data):
+        """Feed the parser newly read data, without parsing it."""
+        self.buf += data
+
     def feed(self, data):
         """Feed the parser newly read data.
 
         Returns a list of messages completed by the new data.
         """
         self.buf += data
-        return list(iter(self._read1, None))
+        return list(iter(self.get_next_message, None))
 
-    def _read1(self):
+    def get_next_message(self):
+        """Parse one message, if there is enough data.
+
+        Returns None if it doesn't have a complete message.
+        """
         if self.next_msg_size is None:
             if len(self.buf) >= 16:
                 self.next_msg_size = calc_msg_size(self.buf)
