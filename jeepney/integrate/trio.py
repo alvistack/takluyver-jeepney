@@ -1,7 +1,9 @@
 from collections import OrderedDict
+from outcome import Value, Error
+import trio
 from trio import (
     open_unix_socket, open_memory_channel, open_nursery,
-    Event, SocketStream, EndOfChannel, Nursery
+    Cancelled, CancelScope, Event, SocketStream, EndOfChannel, Nursery
 )
 from trio.abc import Channel
 
@@ -64,7 +66,7 @@ class ClientDBusConnection:
         self.awaiting_unmatched = OrderedDict()
         self._unmatched_key = 0
         self._wake_receiver = Event()
-        self._stop_receiver = False
+        self._rcv_cancel_scope = CancelScope()
         nursery.start_soon(self._receiver)
 
     async def send(self, message):
@@ -78,9 +80,14 @@ class ClientDBusConnection:
         try:
             await self.send(message)
             self._wake_receiver.set()
-            return await rcv.receive()
+            outc = await rcv.receive()
         finally:
             self.awaiting_reply.pop(serial, None)
+
+        # The outcome here is an exception only if something prevented us
+        # from getting a reply. A reply with an error is not turned into an
+        # exception at this level.
+        return outc.unwrap()
 
     async def receive_unmatched(self):
         snd, rcv = open_memory_channel(0)
@@ -89,42 +96,66 @@ class ClientDBusConnection:
         self.awaiting_unmatched[key] = snd
         try:
             self._wake_receiver.set()
-            return await rcv.receive()
+            outc = await rcv.receive()
         finally:
             self.awaiting_unmatched.pop(key, None)
 
+        return outc.unwrap()
+
     async def aclose(self):
-        self._stop_receiver = True
-        self._wake_receiver.set()
-        for waiting_dict in (self.awaiting_reply, self.awaiting_unmatched):
-            for chn in waiting_dict.values():
-                await chn.aclose()
-            waiting_dict.clear()
+        self._rcv_cancel_scope.cancel()
         await self._conn.aclose()
 
     async def _receiver(self):
-        while True:
-            await self._wake_receiver.wait()
-            if self._stop_receiver:
-                return
+        try:
+            with self._rcv_cancel_scope:
+                while True:
+                    await self._wake_receiver.wait()
 
-            if not (self.awaiting_reply or self.awaiting_unmatched):
-                # No-one waiting for a message. Sleep.
-                self._wake_receiver = Event()
-                continue
+                    if not (self.awaiting_reply or self.awaiting_unmatched):
+                        # No-one waiting for a message. Sleep.
+                        self._wake_receiver = Event()
+                        continue
 
-            msg = await self._conn.receive()
-            rep_serial = msg.header.fields.get(HeaderFields.reply_serial, -1)
-            chn = self.awaiting_reply.pop(rep_serial, None)
-            if chn is None:
-                if self.awaiting_unmatched:
-                    chn = self.awaiting_unmatched.popitem(last=False)
-                else:
-                    # Unwanted message, but we still have a reply to find.
-                    continue
+                    msg = await self._conn.receive()
+                    rep_serial = msg.header.fields.get(HeaderFields.reply_serial, -1)
+                    chn = self.awaiting_reply.pop(rep_serial, None)
+                    if chn is None:
+                        if self.awaiting_unmatched:
+                            chn = self.awaiting_unmatched.popitem(last=False)
+                        else:
+                            # Unwanted message, but we still have a reply to find.
+                            continue
 
-            await chn.send(msg)
-            await chn.aclose()
+                    # Hand off the message to the appropriate task
+                    try:
+                        await chn.send(Value(msg))
+                    except Cancelled:
+                        await chn.aclose()
+                        raise
+                    await chn.aclose()
+
+        except trio.EndOfChannel:
+            exc = trio.EndOfChannel("D-Bus connection closed from the other side")
+        except Exception as e:
+            exc = trio.BrokenResourceError("Error receiving D-Bus messages")
+            exc.__cause__ = e
+            await self.aclose()
+        else:
+            # The only way out of the loop without an exception reaching here
+            # is if the cancel scope was cancelled, which happens if the
+            # ClientDBusConnection is closed.
+            exc = trio.ClosedResourceError("D-Bus connection closed from this side")
+
+        # Send errors to any tasks still waiting for a message.
+        for d in (self.awaiting_reply, self.awaiting_unmatched):
+            for chn in d.values():
+                try:
+                    chn.send_nowait(Error(exc))
+                    await chn.aclose()
+                except Exception:
+                    pass
+            d.clear()
 
 
 class Proxy(ProxyBase):
