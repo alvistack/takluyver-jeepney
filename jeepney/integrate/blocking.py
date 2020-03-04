@@ -1,6 +1,8 @@
 """Synchronous IO wrappers around jeepney
 """
+from errno import ECONNRESET
 import functools
+import os
 import socket
 
 from jeepney.auth import SASLParser, make_auth_external, BEGIN, AuthenticationError
@@ -59,7 +61,7 @@ class DBusConnection:
         Blocks until at least one message has been read.
         """
         while True:
-            b = self.sock.recv(4096)
+            b = unwrap_read(self.sock.recv(4096))
             msgs = self.parser.feed(b)
             if msgs:
                 for msg in msgs:
@@ -96,6 +98,17 @@ class Proxy(ProxyBase):
         return inner
 
 
+def unwrap_read(b):
+    """Raise ConnectionResetError from an empty read.
+
+    Sometimes the socket raises an error itself, sometimes it gives no data.
+    I haven't worked out when it behaves each way.
+    """
+    if not b:
+        raise ConnectionResetError(ECONNRESET, os.strerror(ECONNRESET))
+    return b
+
+
 def connect_and_authenticate(bus='SESSION'):
     bus_addr = get_bus(bus)
     sock = socket.socket(family=socket.AF_UNIX)
@@ -103,7 +116,7 @@ def connect_and_authenticate(bus='SESSION'):
     sock.sendall(b'\0' + make_auth_external())
     auth_parser = SASLParser()
     while not auth_parser.authenticated:
-        auth_parser.feed(sock.recv(1024))
+        auth_parser.feed(unwrap_read(sock.recv(1024)))
         if auth_parser.error:
             raise AuthenticationError(auth_parser.error)
 
