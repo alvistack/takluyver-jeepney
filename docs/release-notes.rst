@@ -1,6 +1,13 @@
 Release notes
 =============
 
+0.4.3
+-----
+
+* The blocking integration now throws ``ConnectionResetError`` on all systems
+  when the connection was closed from the other end. It would previously hang
+  on some systems.
+
 0.4.2
 -----
 
