@@ -1,7 +1,11 @@
+import sys
+
+sys.excepthook =  sys.__excepthook__
+
 import trio
 
 from jeepney import MessageGenerator, new_method_call
-from jeepney.integrate.trio import open_client_connection, Proxy
+from jeepney.integrate.trio import open_requester, Proxy
 
 # ---- Message generator, created by jeepney.bindgen ----
 class Notifications(MessageGenerator):
@@ -28,8 +32,8 @@ class Notifications(MessageGenerator):
 
 
 async def send_notification():
-    async with open_client_connection(bus='SESSION') as conn:
-        proxy = Proxy(Notifications(), conn)
+    async with open_requester(bus='SESSION') as req:
+        proxy = Proxy(Notifications(), req)
 
         resp = await proxy.Notify('jeepney_test',  # App name
                               0,      # Not replacing any previous notification
@@ -40,7 +44,6 @@ async def send_notification():
                               -1,      # expire_timeout (-1 = default)
                              )
         print('Notification ID:', resp.body[0])
-        await conn.aclose()
 
 if __name__ == '__main__':
     trio.run(send_notification)

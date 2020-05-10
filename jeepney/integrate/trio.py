@@ -1,17 +1,20 @@
-from collections import OrderedDict
+import logging
 from outcome import Value, Error
 import trio
 from trio import (
-    open_unix_socket, open_memory_channel, open_nursery,
-    Cancelled, CancelScope, Event, SocketStream, EndOfChannel, Nursery
+    open_unix_socket, open_nursery,
+    Cancelled, CancelScope, SocketStream, EndOfChannel, Nursery
 )
-from trio.abc import Channel
+from trio.abc import Channel, SendChannel
+from trio.hazmat import Abort, current_task, reschedule, wait_task_rescheduled
 
 from jeepney.auth import SASLParser, make_auth_external, BEGIN, AuthenticationError
 from jeepney.bus import get_bus
-from jeepney.low_level import Parser, MessageType, HeaderFields
+from jeepney.low_level import Parser, MessageType, Message, HeaderFields
 from jeepney.wrappers import ProxyBase
 from jeepney.bus_messages import message_bus
+
+log = logging.getLogger(__name__)
 
 
 class DBusConnection(Channel):
@@ -20,7 +23,7 @@ class DBusConnection(Channel):
     This doesn't run any separate tasks: sending and receiving are done in
     the task that calls those methods. It's suitable for easily implementing
     servers: several worker tasks can receive requests and send replies.
-    For a typical client pattern, see ClientDBusConnection.
+    For a typical client pattern, see DBusRequester.
 
     Implements trio's channel interface for Message objects.
     """
@@ -30,12 +33,12 @@ class DBusConnection(Channel):
         self.outgoing_serial = 0
         self.unique_name = None
 
-    async def send(self, message):
+    async def send(self, message: Message):
         self.outgoing_serial += 1
         message.header.serial = self.outgoing_serial
         await self.socket.send_all(message.serialise())
 
-    async def receive(self):
+    async def receive(self) -> Message:
         while True:
             msg = self.parser.get_next_message()
             if msg is not None:
@@ -49,132 +52,21 @@ class DBusConnection(Channel):
     async def aclose(self):
         await self.socket.aclose()
 
+    def requester(self):
+        """Temporarily wrap this connection as a DBusRequester
 
-class ClientDBusConnection:
-    """A 'client' D-Bus connection which can wait for a specific reply.
+        To be used like::
 
-    This runs a background receiver task, and makes it possible to send a
-    request and wait for the relevant reply. You can also receive the next
-    message which someone else isn't waiting for.
-    If no-one is waiting for any messages, the receiver task stops reading.
-    But if any task is waiting for a reply, messages with no task to receive
-    them may be discarded, to avoid them piling up in memory.
-    """
-    def __init__(self, conn: DBusConnection, nursery: Nursery):
-        self._conn = conn
-        self.awaiting_reply = {}
-        self.awaiting_unmatched = OrderedDict()
-        self._unmatched_key = 0
-        self._wake_receiver = Event()
-        self._rcv_cancel_scope = CancelScope()
-        nursery.start_soon(self._receiver)
+            async with conn.requester() as req:
+                reply = await req.send_and_get_reply(msg)
 
-    async def send(self, message):
-        await self._conn.send(message)
-
-    async def send_and_get_reply(self, message):
-        serial = self._conn.outgoing_serial + 1
-        snd, rcv = open_memory_channel(0)
-        self.awaiting_reply[serial] = snd
-
-        try:
-            await self.send(message)
-            self._wake_receiver.set()
-            outc = await rcv.receive()
-        finally:
-            self.awaiting_reply.pop(serial, None)
-
-        # The outcome here is an exception only if something prevented us
-        # from getting a reply. A reply with an error is not turned into an
-        # exception at this level.
-        return outc.unwrap()
-
-    async def receive_unmatched(self):
-        snd, rcv = open_memory_channel(0)
-        key = self._unmatched_key
-        self._unmatched_key += 1
-        self.awaiting_unmatched[key] = snd
-        try:
-            self._wake_receiver.set()
-            outc = await rcv.receive()
-        finally:
-            self.awaiting_unmatched.pop(key, None)
-
-        return outc.unwrap()
-
-    async def aclose(self):
-        self._rcv_cancel_scope.cancel()
-        await self._conn.aclose()
-
-    async def _receiver(self):
-        try:
-            with self._rcv_cancel_scope:
-                while True:
-                    await self._wake_receiver.wait()
-
-                    if not (self.awaiting_reply or self.awaiting_unmatched):
-                        # No-one waiting for a message. Sleep.
-                        self._wake_receiver = Event()
-                        continue
-
-                    msg = await self._conn.receive()
-                    rep_serial = msg.header.fields.get(HeaderFields.reply_serial, -1)
-                    chn = self.awaiting_reply.pop(rep_serial, None)
-                    if chn is None:
-                        if self.awaiting_unmatched:
-                            chn = self.awaiting_unmatched.popitem(last=False)
-                        else:
-                            # Unwanted message, but we still have a reply to find.
-                            continue
-
-                    # Hand off the message to the appropriate task
-                    try:
-                        await chn.send(Value(msg))
-                    except Cancelled:
-                        await chn.aclose()
-                        raise
-                    await chn.aclose()
-
-        except trio.EndOfChannel:
-            exc = trio.EndOfChannel("D-Bus connection closed from the other side")
-        except Exception as e:
-            exc = trio.BrokenResourceError("Error receiving D-Bus messages")
-            exc.__cause__ = e
-            await self.aclose()
-        else:
-            # The only way out of the loop without an exception reaching here
-            # is if the cancel scope was cancelled, which happens if the
-            # ClientDBusConnection is closed.
-            exc = trio.ClosedResourceError("D-Bus connection closed from this side")
-
-        # Send errors to any tasks still waiting for a message.
-        for d in (self.awaiting_reply, self.awaiting_unmatched):
-            for chn in d.values():
-                try:
-                    chn.send_nowait(Error(exc))
-                    await chn.aclose()
-                except Exception:
-                    pass
-            d.clear()
+        While the requester is running, you shouldn't use :meth:`receive`.
+        Once the requester is closed, you can use the plain connection again.
+        """
+        return _RequesterContext(self)
 
 
-class Proxy(ProxyBase):
-    def __init__(self, msggen, connection):
-        super().__init__(msggen)
-        if not isinstance(connection, ClientDBusConnection):
-            raise TypeError("Proxy can only be used with RoutingDBusConnection")
-        self._connection = connection
-
-    def _method_call(self, make_msg):
-        async def inner(*args, **kwargs):
-            msg = make_msg(*args, **kwargs)
-            assert msg.header.message_type is MessageType.method_call
-            return await self._connection.send_and_get_reply(msg)
-
-        return inner
-
-
-async def connect_and_authenticate(bus='SESSION'):
+async def connect_and_authenticate(bus='SESSION') -> DBusConnection:
     """Open a 'plain' D-Bus connection, with no new tasks"""
     bus_addr = get_bus(bus)
     sock : SocketStream = await open_unix_socket(bus_addr)
@@ -193,37 +85,204 @@ async def connect_and_authenticate(bus='SESSION'):
 
     conn = DBusConnection(sock)
 
-    await conn.send(message_bus.Hello())
-
-    async for in_msg in conn:
-        if in_msg.header.fields.get(HeaderFields.reply_serial, -1) == 1:
-            conn.unique_name = in_msg.body[0]
-            break
+    # Say *Hello* to the message bus - this must be the first message, and the
+    # reply gives us our unique name.
+    async with conn.requester() as requester:
+        reply = await requester.send_and_get_reply(message_bus.Hello())
+        conn.unique_name = reply.body[0]
 
     return conn
 
-class _ClientConnectionContext:
-    def __init__(self, bus='SESSION'):
-        self.bus = bus
+
+class DummySendChannel(SendChannel):
+    """A send channel that accepts & discards messages"""
+    async def send(self, value):
+        pass
+
+    async def send_nowait(self, value):
+        pass
+
+    async def aclose(self):
+        pass
+
+
+class Future:
+    """A Future for trio.
+
+    Is this a bad idea? Trio doesn't offer futures itself, but I couldn't find
+    a neater way to achieve what I wanted.
+    """
+    def __init__(self):
+        self._outcome = None
+        self._task = None
+
+    def set(self, outcome):
+        self._outcome = outcome
+        if self._task is not None:
+            reschedule(self._task, outcome)
+
+    async def get(self):
+        if self._outcome is not None:
+            await trio.hazmat.checkpoint()
+            return self._outcome.unwrap()
+
+        self._task = current_task()
+
+        def abort_fn(_):
+            self._task = None
+            return Abort.SUCCEEDED
+
+        return (await wait_task_rescheduled(abort_fn))
+
+
+class DBusRequester:
+    """A 'client' D-Bus connection which can wait for a specific reply.
+
+    This runs a background receiver task, and makes it possible to send a
+    request and wait for the relevant reply.
+    """
+    def __init__(self, conn: DBusConnection, nursery: Nursery,
+                 incoming_method_calls=None):
+        self._conn = conn
+        self._reply_futures = {}
+        self._incoming_calls = incoming_method_calls or DummySendChannel()
+        self._rcv_cancel_scope = CancelScope()
+        nursery.start_soon(self._receiver)
+
+    async def send(self, message):
+        await self._conn.send(message)
+
+    async def send_and_get_reply(self, message) -> Message:
+        """Send a method call message and wait for the reply
+
+        Returns the reply message (method return or error message type).
+        """
+        if message.header.message_type != MessageType.method_call:
+            raise TypeError("Only method call messages have replies")
+        serial = self._conn.outgoing_serial + 1
+        self._reply_futures[serial] = reply_fut = Future()
+
+        try:
+            await self.send(message)
+            return (await reply_fut.get())
+        except Cancelled:
+            self._reply_futures.pop(serial, None)
+            raise
+
+    async def aclose(self):
+        """Stop the receiver loop"""
+        self._rcv_cancel_scope.cancel()
+
+    def _dispatch(self, msg):
+        """Handle one received message"""
+        msg_type = msg.header.message_type
+        if msg_type == MessageType.method_call:
+            try:
+                self._incoming_calls.send_nowait(msg)
+            except trio.WouldBlock:
+                log.debug("Discarded incoming method call (queue full): %s", msg)
+
+        elif msg_type in (MessageType.method_return, MessageType.error):
+            rep_serial = msg.header.fields.get(HeaderFields.reply_serial, -1)
+            fut = self._reply_futures.pop(rep_serial, None)
+            if fut is not None:
+                fut.set(Value(msg))
+            else:
+                log.debug("Discarded reply (nothing waiting for it): %s", msg)
+
+        else:
+            log.debug("Discarded signal message: %s", msg)
+
+    async def _receiver(self):
+        """Receiver loop - runs in a separate task"""
+        try:
+            with self._rcv_cancel_scope:
+                while True:
+                    msg = await self._conn.receive()
+                    self._dispatch(msg)
+
+        except trio.EndOfChannel:
+            exc = trio.EndOfChannel("D-Bus connection closed from the other side")
+        except Exception as e:
+            exc = trio.BrokenResourceError("Error receiving D-Bus messages")
+            exc.__cause__ = e
+            await self.aclose()
+        else:
+            # The only way out of the loop without an exception reaching here
+            # is if the cancel scope was cancelled, which happens if the
+            # ClientDBusConnection is closed.
+            exc = trio.ClosedResourceError("D-Bus connection closed from this side")
+
+        # Send errors to any tasks still waiting for a message.
+        futures = self._reply_futures
+        self._reply_futures = {}
+        for fut in futures.values():
+            fut.set(Error(exc))
+
+        await self._incoming_calls.aclose()
+
+
+class Proxy(ProxyBase):
+    def __init__(self, msggen, requester):
+        super().__init__(msggen)
+        if not isinstance(requester, DBusRequester):
+            raise TypeError("Proxy can only be used with DBusRequester")
+        self._requester = requester
+
+    def _method_call(self, make_msg):
+        async def inner(*args, **kwargs):
+            msg = make_msg(*args, **kwargs)
+            assert msg.header.message_type is MessageType.method_call
+            return await self._requester.send_and_get_reply(msg)
+
+        return inner
+
+
+class _RequesterContext:
+    def __init__(self, conn):
+        self.conn = conn
         self.nursery_mgr = open_nursery()
-        self.client_conn = None
+        self.requester = None
 
     async def __aenter__(self):
-        plain_conn = await connect_and_authenticate(self.bus)
         nursery = await self.nursery_mgr.__aenter__()
-        self.client_conn = ClientDBusConnection(plain_conn, nursery)
-        return self.client_conn
+        self.requester = DBusRequester(self.conn, nursery)
+        return self.requester
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
-        await self.client_conn.aclose()
+        await self.requester.aclose()
         await self.nursery_mgr.__aexit__(exc_type, exc_val, exc_tb)
 
-def open_client_connection(bus='SESSION'):
+class _ClientConnectionContext:
+    conn = None
+    req_ctx = None
+
+    def __init__(self, bus='SESSION'):
+        self.bus = bus
+
+    async def __aenter__(self):
+        self.conn = await connect_and_authenticate(self.bus)
+        self.req_ctx = self.conn.requester()
+        return await self.req_ctx.__aenter__()
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        await self.req_ctx.__aexit__(exc_type, exc_val, exc_tb)
+        await self.conn.aclose()
+
+
+def open_requester(bus='SESSION'):
     """Open a 'client' D-Bus connection with a receiver task.
 
     Use as an async context manager::
 
-        async with open_client_connection() as conn:
+        async with open_requester() as req:
             ...
+
+    This is a shortcut for::
+
+        conn = await connect_and_authenticate()
+        async with conn:
+            async with conn.requester() as req:
+                ...
     """
     return _ClientConnectionContext(bus)
