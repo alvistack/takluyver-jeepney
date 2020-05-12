@@ -167,9 +167,8 @@ class DBusRequester:
         try:
             await self.send(message)
             return (await reply_fut.get())
-        except Cancelled:
-            self._reply_futures.pop(serial, None)
-            raise
+        finally:
+            del self._reply_futures[serial]
 
     async def aclose(self):
         """Stop the receiver loop"""
@@ -186,7 +185,7 @@ class DBusRequester:
 
         elif msg_type in (MessageType.method_return, MessageType.error):
             rep_serial = msg.header.fields.get(HeaderFields.reply_serial, -1)
-            fut = self._reply_futures.pop(rep_serial, None)
+            fut = self._reply_futures.get(rep_serial, None)
             if fut is not None:
                 fut.set(Value(msg))
             else:
