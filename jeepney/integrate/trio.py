@@ -37,7 +37,7 @@ class DBusConnection(Channel):
     async def send(self, message: Message):
         self.outgoing_serial += 1
         message.header.serial = self.outgoing_serial
-        with self.send_lock:
+        async with self.send_lock:
             await self.socket.send_all(message.serialise())
 
     async def receive(self) -> Message:
