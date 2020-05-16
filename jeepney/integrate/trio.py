@@ -65,7 +65,7 @@ class DBusConnection(Channel):
         While the requester is running, you shouldn't use :meth:`receive`.
         Once the requester is closed, you can use the plain connection again.
         """
-        return _RequesterContext(self)
+        return DBusRequester(self)
 
 
 async def connect_and_authenticate(bus='SESSION') -> DBusConnection:
@@ -143,13 +143,15 @@ class DBusRequester:
     This runs a background receiver task, and makes it possible to send a
     request and wait for the relevant reply.
     """
-    def __init__(self, conn: DBusConnection, nursery: Nursery,
+    _nursery_mgr = None
+    _rcv_cancel_scope = None
+    is_running = False
+
+    def __init__(self, conn: DBusConnection,
                  incoming_method_calls=None):
         self._conn = conn
         self._reply_futures = {}
         self._incoming_calls = incoming_method_calls or DummySendChannel()
-        self._rcv_cancel_scope = CancelScope()
-        nursery.start_soon(self._receiver)
 
     async def send(self, message):
         await self._conn.send(message)
@@ -161,6 +163,8 @@ class DBusRequester:
         """
         if message.header.message_type != MessageType.method_call:
             raise TypeError("Only method call messages have replies")
+        if not self.is_running:
+            raise RuntimeError("Receiver task is not running")
         serial = self._conn.outgoing_serial + 1
         self._reply_futures[serial] = reply_fut = Future()
 
@@ -170,9 +174,31 @@ class DBusRequester:
         finally:
             del self._reply_futures[serial]
 
+    # Task management -------------------------------------------
+
+    async def start(self, nursery: Nursery):
+        if self.is_running:
+            raise RuntimeError("Receiver is already running")
+        self._rcv_cancel_scope = await nursery.start(self._receiver)
+
     async def aclose(self):
         """Stop the receiver loop"""
-        self._rcv_cancel_scope.cancel()
+        if self._rcv_cancel_scope is not None:
+            self._rcv_cancel_scope.cancel()
+            self._rcv_cancel_scope = None
+
+    async def __aenter__(self):
+        self._nursery_mgr = trio.open_nursery()
+        nursery = await self._nursery_mgr.__aenter__()
+        await self.start(nursery)
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        await self.aclose()
+        await self._nursery_mgr.__aexit__(exc_type, exc_val, exc_tb)
+        self._nursery_mgr = None
+
+    # Code to run in receiver task ------------------------------------
 
     def _dispatch(self, msg):
         """Handle one received message"""
@@ -194,33 +220,27 @@ class DBusRequester:
         else:
             log.debug("Discarded signal message: %s", msg)
 
-    async def _receiver(self):
+    async def _receiver(self, task_status=trio.TASK_STATUS_IGNORED):
         """Receiver loop - runs in a separate task"""
-        try:
-            with self._rcv_cancel_scope:
+        with CancelScope() as cscope:
+            self.is_running = True
+            task_status.started(cscope)
+            try:
                 while True:
                     msg = await self._conn.receive()
                     self._dispatch(msg)
+            finally:
+                self.is_running = False
+                # Send errors to any tasks still waiting for a message.
+                futures, self._reply_futures = self._reply_futures, {}
+                for fut in futures.values():
+                    fut.set(Error(NoReplyError("Reply receiver stopped")))
 
-        except trio.EndOfChannel:
-            exc = trio.EndOfChannel("D-Bus connection closed from the other side")
-        except Exception as e:
-            exc = trio.BrokenResourceError("Error receiving D-Bus messages")
-            exc.__cause__ = e
-            await self.aclose()
-        else:
-            # The only way out of the loop without an exception reaching here
-            # is if the cancel scope was cancelled, which happens if the
-            # ClientDBusConnection is closed.
-            exc = trio.ClosedResourceError("D-Bus connection closed from this side")
+                await self._incoming_calls.aclose()
 
-        # Send errors to any tasks still waiting for a message.
-        futures = self._reply_futures
-        self._reply_futures = {}
-        for fut in futures.values():
-            fut.set(Error(exc))
 
-        await self._incoming_calls.aclose()
+class NoReplyError(Exception):
+    pass
 
 
 class Proxy(ProxyBase):
@@ -238,21 +258,6 @@ class Proxy(ProxyBase):
 
         return inner
 
-
-class _RequesterContext:
-    def __init__(self, conn):
-        self.conn = conn
-        self.nursery_mgr = open_nursery()
-        self.requester = None
-
-    async def __aenter__(self):
-        nursery = await self.nursery_mgr.__aenter__()
-        self.requester = DBusRequester(self.conn, nursery)
-        return self.requester
-
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
-        await self.requester.aclose()
-        await self.nursery_mgr.__aexit__(exc_type, exc_val, exc_tb)
 
 class _ClientConnectionContext:
     conn = None
