@@ -1,3 +1,4 @@
+from itertools import count
 import logging
 from outcome import Value, Error
 import trio
@@ -30,15 +31,15 @@ class DBusConnection(Channel):
     def __init__(self, socket: SocketStream):
         self.socket = socket
         self.parser = Parser()
-        self.outgoing_serial = 0
+        self.outgoing_serial = count(start=1)
         self.unique_name = None
         self.send_lock = trio.Lock()
 
-    async def send(self, message: Message):
-        self.outgoing_serial += 1
-        message.header.serial = self.outgoing_serial
+    async def send(self, message: Message, *, serial=None):
         async with self.send_lock:
-            await self.socket.send_all(message.serialise())
+            if serial is None:
+                serial = next(self.outgoing_serial)
+            await self.socket.send_all(message.serialise(serial))
 
     async def receive(self) -> Message:
         while True:
@@ -153,8 +154,8 @@ class DBusRequester:
         self._reply_futures = {}
         self._incoming_calls = incoming_method_calls or DummySendChannel()
 
-    async def send(self, message):
-        await self._conn.send(message)
+    async def send(self, message, *, serial=None):
+        await self._conn.send(message, serial=serial)
 
     async def send_and_get_reply(self, message) -> Message:
         """Send a method call message and wait for the reply
@@ -165,11 +166,12 @@ class DBusRequester:
             raise TypeError("Only method call messages have replies")
         if not self.is_running:
             raise RuntimeError("Receiver task is not running")
-        serial = self._conn.outgoing_serial + 1
+
+        serial = next(self._conn.outgoing_serial)
         self._reply_futures[serial] = reply_fut = Future()
 
         try:
-            await self.send(message)
+            await self.send(message, serial=serial)
             return (await reply_fut.get())
         finally:
             del self._reply_futures[serial]
