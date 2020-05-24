@@ -24,6 +24,7 @@ Contents:
    limitations
    messages
    bindgen
+   api/index
    release-notes
 
 .. seealso::

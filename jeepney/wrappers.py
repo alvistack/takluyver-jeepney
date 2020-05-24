@@ -47,6 +47,10 @@ def new_header(msg_type):
 def new_method_call(remote_obj, method, signature=None, body=()):
     """Construct a new method call message
 
+    This is a relatively low-level method. In many cases, this will be called
+    from a :class:`MessageGenerator` subclass which provides a more convenient
+    API.
+
     :param DBusAddress remote_obj: The object to call a method on
     :param str method: The name of the method to call
     :param str signature: The DBus signature of the body data
@@ -85,6 +89,7 @@ def new_error(parent_msg, error_name, signature=None, body=()):
     """Construct a new error response message
 
     :param Message parent_msg: The method call this is a reply to
+    :param str error_name: The name of the error
     :param str signature: The DBus signature of the body data
     :param tuple body: Body data
     """
