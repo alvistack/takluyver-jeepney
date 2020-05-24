@@ -187,6 +187,7 @@ class Introspectable(MessageGenerator):
         return new_method_call(self, 'Introspect')
 
 class DBusErrorResponse(Exception):
+    """Raised by proxy method calls when the reply is an error message"""
     def __init__(self, msg):
         self.name = msg.header.fields.get(HeaderFields.error_name)
         self.data = msg.body

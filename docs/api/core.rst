@@ -78,20 +78,41 @@ Message objects
       Integer representing message flags. See the D-Bus specification.
 
    .. attribute:: protocol_version
+      :type: int
 
-      Integer, currently always 1.
+      Currently always 1.
 
    .. attribute:: body_length
+      :type: int
 
-      Integer, the length of the raw message body in bytes.
+      The length of the raw message body in bytes.
 
    .. attribute:: serial
+      :type: int
 
-      Integer, sender's serial number for this message.
+      Sender's serial number for this message.
 
    .. attribute:: fields
+      :type: dict
 
-      Dict, mapping :class:`HeaderFields` values to the relevant Python objects.
+      Mapping of :class:`HeaderFields` values to the relevant Python objects.
+
+Exceptions
+----------
+
+.. autoexception:: SizeLimitError
+
+.. autoexception:: DBusErrorResponse
+
+   .. attribute:: name
+      :type: str
+
+      The error name from the remote end.
+
+   .. attribute:: body
+      :type: tuple
+
+      Any data fields contained in the error message.
 
 Enums
 -----

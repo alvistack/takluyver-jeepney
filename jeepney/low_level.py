@@ -2,6 +2,11 @@ from enum import Enum, IntEnum
 import struct
 
 class SizeLimitError(ValueError):
+    """Raised when trying to (de-)serialise data exceeding D-Bus' size limit.
+
+    This is currently only implemented for arrays, where the maximum size is
+    64 MiB.
+    """
     pass
 
 class Endianness(Enum):
