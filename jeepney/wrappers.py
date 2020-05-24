@@ -11,6 +11,7 @@ __all__ = [
     'new_signal',
     'MessageGenerator',
     'Properties',
+    'Introspectable',
     'DBusErrorResponse',
 ]
 
@@ -161,7 +162,10 @@ class ProxyBase:
 class Properties:
     """Build messages for accessing object properties
 
-    This uses the standard DBus interface org.freedesktop.DBus.Properties
+    If a D-Bus object has multiple interfaces, each interface has its own
+    set of properties.
+
+    This uses the standard DBus interface ``org.freedesktop.DBus.Properties``
     """
     def __init__(self, obj: Union[DBusAddress, MessageGenerator]):
         self.obj = obj
@@ -169,14 +173,17 @@ class Properties:
                                     interface='org.freedesktop.DBus.Properties')
 
     def get(self, name):
+        """Get the value of the property *name*"""
         return new_method_call(self.props_if, 'Get', 'ss',
                    (self.obj.interface, name))
 
     def get_all(self):
+        """Get all property values for this interface"""
         return new_method_call(self.props_if, 'GetAll', 's',
                                (self.obj.interface,))
 
     def set(self, name, signature, value):
+        """Set the property *name* to *value* (with appropriate signature)"""
         return new_method_call(self.props_if, 'Set', 'ssv',
                    (self.obj.interface, name, (signature, value)))
 
@@ -184,6 +191,7 @@ class Introspectable(MessageGenerator):
     interface = 'org.freedesktop.DBus.Introspectable'
 
     def Introspect(self):
+        """Request D-Bus introspection XML for a remote object"""
         return new_method_call(self, 'Introspect')
 
 class DBusErrorResponse(Exception):

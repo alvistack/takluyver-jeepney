@@ -11,6 +11,8 @@ class DBusNameFlags:
     do_not_queue = 4
 
 class DBus(MessageGenerator):
+    """Messages to talk to the message bus
+    """
     interface = 'org.freedesktop.DBus'
 
     def __init__(self, object_path='/org/freedesktop/DBus',
@@ -91,6 +93,7 @@ class Monitoring(MessageGenerator):
         super().__init__(object_path=object_path, bus_name=bus_name)
 
     def BecomeMonitor(self, rules):
+        """Convert this connection to a monitor connection (advanced)"""
         return new_method_call(self, 'BecomeMonitor', 'asu', (rules, 0))
 
 class Stats(MessageGenerator):

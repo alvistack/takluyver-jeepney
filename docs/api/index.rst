@@ -5,3 +5,4 @@ API reference
    :maxdepth: 2
 
    core
+   common_msgs
