@@ -1,15 +1,19 @@
 Authentication
 ==============
 
+.. note::
+
+   If you use any of Jeepney's I/O integrations, authentication is built
+   in. You only need these functions if you're working outside that.
+
 If you are setting up a socket for D-Bus, you will need to do `SASL
 <https://en.wikipedia.org/wiki/Simple_Authentication_and_Security_Layer>`_
 authentication before starting to send and receive D-Bus messages.
-This text based protocol is completely different to standard D-Bus.
+This text based protocol is completely different to D-Bus itself.
 
-.. note::
-
-   If you use any of Jeepney's I/O integration layers, authentication is built
-   in. You only need these functions if you're working outside that.
+Only a small fraction of SASL is implemented here, primarily what Jeepney's
+integration layer uses. If you're doing something different, you may need to
+implement other messages yourself.
 
 .. module:: jeepney.auth
 
