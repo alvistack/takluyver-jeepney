@@ -244,6 +244,7 @@ class DBusRequester:
                 log.debug("Discarded reply (nothing waiting for it): %s", msg)
 
         else:
+            # TODO: Handle signal messages
             log.debug("Discarded signal message: %s", msg)
 
     async def _receiver(self, task_status=trio.TASK_STATUS_IGNORED):
