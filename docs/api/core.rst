@@ -94,7 +94,8 @@ Message objects
    .. attribute:: serial
       :type: int
 
-      Sender's serial number for this message.
+      Sender's serial number for this message. This is not necessarily set
+      for outgoing messages - see :meth:`Message.serialise`.
 
    .. attribute:: fields
       :type: dict
