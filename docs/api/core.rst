@@ -43,7 +43,7 @@ Message objects
       D-Bus type     D-Bus code  Python type
       ===========    ==========  ===========
       BYTE            ``y``      int
-      BOOLEAN         ``b``      int
+      BOOLEAN         ``b``      bool
       INT16           ``n``      int
       UINT16          ``q``      int
       INT32           ``i``      int

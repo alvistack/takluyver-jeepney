@@ -82,11 +82,26 @@ class FixedType:
                 and (self.struct_code == other.struct_code)
 
 
+class Boolean(FixedType):
+    def __init__(self):
+        super().__init__(4, 'I')  # D-Bus booleans take 4 bytes
+
+    def parse_data(self, buf, pos, endianness):
+        val, new_pos = super().parse_data(buf, pos, endianness)
+        return bool(val), new_pos
+
+    def __repr__(self):
+        return 'Boolean()'
+
+    def __eq__(self, other):
+        return type(other) is Boolean
+
+
 simple_types = {
     'y': FixedType(1, 'B'),  # unsigned 8 bit
-    'b': FixedType(4, 'I'),  # bool
     'n': FixedType(2, 'h'),  # signed 16 bit
     'q': FixedType(2, 'H'),  # unsigned 16 bit
+    'b': Boolean(),          # bool (32-bit)
     'i': FixedType(4, 'i'),  # signed 32-bit
     'u': FixedType(4, 'I'),  # unsigned 32-bit
     'x': FixedType(8, 'q'),  # signed 64-bit
