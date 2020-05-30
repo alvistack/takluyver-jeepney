@@ -2,10 +2,6 @@ from itertools import count
 import logging
 from outcome import Value, Error
 import trio
-from trio import (
-    open_unix_socket, open_nursery,
-    Cancelled, CancelScope, SocketStream, EndOfChannel, Nursery
-)
 from trio.abc import Channel, SendChannel
 from trio.hazmat import Abort, current_task, reschedule, wait_task_rescheduled
 
@@ -28,7 +24,7 @@ class DBusConnection(Channel):
 
     Implements trio's channel interface for Message objects.
     """
-    def __init__(self, socket: SocketStream):
+    def __init__(self, socket: trio.SocketStream):
         self.socket = socket
         self.parser = Parser()
         self.outgoing_serial = count(start=1)
@@ -49,7 +45,7 @@ class DBusConnection(Channel):
 
             b = await self.socket.receive_some()
             if not b:
-                raise EndOfChannel("Socket closed at the other end")
+                raise trio.EndOfChannel("Socket closed at the other end")
             self.parser.add_data(b)
 
     async def aclose(self):
@@ -72,7 +68,7 @@ class DBusConnection(Channel):
 async def connect_and_authenticate(bus='SESSION') -> DBusConnection:
     """Open a 'plain' D-Bus connection, with no new tasks"""
     bus_addr = get_bus(bus)
-    sock : SocketStream = await open_unix_socket(bus_addr)
+    sock : trio.SocketStream = await trio.open_unix_socket(bus_addr)
 
     # Authentication flow
     await sock.send_all(b'\0' + make_auth_external())
@@ -186,7 +182,7 @@ class DBusRequester:
 
     # Task management -------------------------------------------
 
-    async def start(self, nursery: Nursery):
+    async def start(self, nursery: trio.Nursery):
         if self.is_running:
             raise RuntimeError("DBusRequester tasks are already running")
         self._send_cancel_scope = await nursery.start(self._sender)
@@ -245,7 +241,7 @@ class DBusRequester:
 
     async def _receiver(self, task_status=trio.TASK_STATUS_IGNORED):
         """Receiver loop - runs in a separate task"""
-        with CancelScope() as cscope:
+        with trio.CancelScope() as cscope:
             self.is_running = True
             task_status.started(cscope)
             try:
