@@ -145,6 +145,7 @@ class DBusRequester:
     request and wait for the relevant reply.
     """
     _nursery_mgr = None
+    _send_cancel_scope = None
     _rcv_cancel_scope = None
     is_running = False
 
@@ -152,10 +153,17 @@ class DBusRequester:
                  incoming_method_calls=None):
         self._conn = conn
         self._reply_futures = {}
+        self._to_send, self._to_be_sent = trio.open_memory_channel(0)
         self._incoming_calls = incoming_method_calls or DummySendChannel()
 
     async def send(self, message, *, serial=None):
-        await self._conn.send(message, serial=serial)
+        if serial is None:
+            serial = next(self._conn.outgoing_serial)
+        b = message.serialise(serial)
+        # Hand off the actual sending to a separate task. This ensures that
+        # cancelling the task that makes a D-Bus message can't break the
+        # connection by sending an incomplete message.
+        await self._to_send.send(b)
 
     async def send_and_get_reply(self, message) -> Message:
         """Send a method call message and wait for the reply
@@ -180,11 +188,15 @@ class DBusRequester:
 
     async def start(self, nursery: Nursery):
         if self.is_running:
-            raise RuntimeError("Receiver is already running")
+            raise RuntimeError("DBusRequester tasks are already running")
+        self._send_cancel_scope = await nursery.start(self._sender)
         self._rcv_cancel_scope = await nursery.start(self._receiver)
 
     async def aclose(self):
-        """Stop the receiver loop"""
+        """Stop the sender & receiver tasks"""
+        if self._send_cancel_scope is not None:
+            self._send_cancel_scope.cancel()
+            self._send_cancel_scope = None
         if self._rcv_cancel_scope is not None:
             self._rcv_cancel_scope.cancel()
             self._rcv_cancel_scope = None
@@ -199,6 +211,15 @@ class DBusRequester:
         await self.aclose()
         await self._nursery_mgr.__aexit__(exc_type, exc_val, exc_tb)
         self._nursery_mgr = None
+
+    # Code to run in sender task --------------------------------------
+
+    async def _sender(self, task_status=trio.TASK_STATUS_IGNORED):
+        with trio.CancelScope() as cscope:
+            task_status.started(cscope)
+            async for bmsg in self._to_be_sent:
+                async with self._conn.send_lock:
+                    await self._conn.socket.send_all(bmsg)
 
     # Code to run in receiver task ------------------------------------
 
