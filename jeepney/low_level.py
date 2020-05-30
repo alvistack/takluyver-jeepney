@@ -2,6 +2,11 @@ from enum import Enum, IntEnum
 import struct
 
 class SizeLimitError(ValueError):
+    """Raised when trying to (de-)serialise data exceeding D-Bus' size limit.
+
+    This is currently only implemented for arrays, where the maximum size is
+    64 MiB.
+    """
     pass
 
 class Endianness(Enum):
@@ -323,6 +328,11 @@ def serialise_header_fields(d, endianness):
 class Header:
     def __init__(self, endianness, message_type, flags, protocol_version,
                  body_length, serial, fields):
+        """A D-Bus message header
+
+        It's not normally necessary to construct this directly: use higher level
+        functions and methods instead.
+        """
         self.endianness = endianness
         self.message_type = message_type
         self.flags = flags

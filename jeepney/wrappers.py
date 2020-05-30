@@ -11,6 +11,7 @@ __all__ = [
     'new_signal',
     'MessageGenerator',
     'Properties',
+    'Introspectable',
     'DBusErrorResponse',
 ]
 
@@ -46,6 +47,10 @@ def new_header(msg_type):
 
 def new_method_call(remote_obj, method, signature=None, body=()):
     """Construct a new method call message
+
+    This is a relatively low-level method. In many cases, this will be called
+    from a :class:`MessageGenerator` subclass which provides a more convenient
+    API.
 
     :param DBusAddress remote_obj: The object to call a method on
     :param str method: The name of the method to call
@@ -85,6 +90,7 @@ def new_error(parent_msg, error_name, signature=None, body=()):
     """Construct a new error response message
 
     :param Message parent_msg: The method call this is a reply to
+    :param str error_name: The name of the error
     :param str signature: The DBus signature of the body data
     :param tuple body: Body data
     """
@@ -156,7 +162,10 @@ class ProxyBase:
 class Properties:
     """Build messages for accessing object properties
 
-    This uses the standard DBus interface org.freedesktop.DBus.Properties
+    If a D-Bus object has multiple interfaces, each interface has its own
+    set of properties.
+
+    This uses the standard DBus interface ``org.freedesktop.DBus.Properties``
     """
     def __init__(self, obj: Union[DBusAddress, MessageGenerator]):
         self.obj = obj
@@ -164,14 +173,17 @@ class Properties:
                                     interface='org.freedesktop.DBus.Properties')
 
     def get(self, name):
+        """Get the value of the property *name*"""
         return new_method_call(self.props_if, 'Get', 'ss',
                    (self.obj.interface, name))
 
     def get_all(self):
+        """Get all property values for this interface"""
         return new_method_call(self.props_if, 'GetAll', 's',
                                (self.obj.interface,))
 
     def set(self, name, signature, value):
+        """Set the property *name* to *value* (with appropriate signature)"""
         return new_method_call(self.props_if, 'Set', 'ssv',
                    (self.obj.interface, name, (signature, value)))
 
@@ -179,9 +191,11 @@ class Introspectable(MessageGenerator):
     interface = 'org.freedesktop.DBus.Introspectable'
 
     def Introspect(self):
+        """Request D-Bus introspection XML for a remote object"""
         return new_method_call(self, 'Introspect')
 
 class DBusErrorResponse(Exception):
+    """Raised by proxy method calls when the reply is an error message"""
     def __init__(self, msg):
         self.name = msg.header.fields.get(HeaderFields.error_name)
         self.data = msg.body

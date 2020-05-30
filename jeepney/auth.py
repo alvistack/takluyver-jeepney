@@ -1,11 +1,16 @@
 from binascii import hexlify
 import os
 
-def make_auth_external():
+def make_auth_external() -> bytes:
+    """Prepare an AUTH command line with the current effective user ID.
+
+    This is the preferred authentication method for typical D-Bus connections
+    over a Unix domain socket.
+    """
     hex_uid = hexlify(str(os.geteuid()).encode('ascii'))
     return b'AUTH EXTERNAL %b\r\n' % hex_uid
 
-def make_auth_anonymous():
+def make_auth_anonymous() -> bytes:
     """Format an AUTH command line for the ANONYMOUS mechanism
 
     Jeepney's higher-level wrappers don't currently use this mechanism,
@@ -20,7 +25,7 @@ def make_auth_anonymous():
 BEGIN = b'BEGIN\r\n'
 
 class AuthenticationError(ValueError):
-    """Raised when DBus authentication fails"""
+    """Raised by integration code when DBus authentication fails"""
     def __init__(self, data):
         self.data = data
 
@@ -28,6 +33,7 @@ class AuthenticationError(ValueError):
         return "Authentication failed. Bus sent: %r" % self.data
 
 class SASLParser:
+    """Parse authentication messages received"""
     def __init__(self):
         self.buffer = b''
         self.authenticated = False
@@ -39,7 +45,8 @@ class SASLParser:
         else:
             self.error = line
 
-    def feed(self, data):
+    def feed(self, data: bytes):
+        """Process received data"""
         self.buffer += data
         while (b'\r\n' in self.buffer) and not self.authenticated:
             line, self.buffer = self.buffer.split(b'\r\n', 1)
