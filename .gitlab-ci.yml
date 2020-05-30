@@ -1,9 +1,20 @@
-image: python:3.5
-
 before_script:
   - pip install pytest testpath
 
-test_job_py35:
+test_job_py38:
+  image: python:3.8
   script:
-    - py.test
+    - pytest
+  stage: test
+
+test_job_py37:
+  image: python:3.7
+  script:
+    - pytest
+  stage: test
+
+test_job_py36:
+  image: python:3.6
+  script:
+    - pytest
   stage: test
