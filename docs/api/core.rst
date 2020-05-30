@@ -25,6 +25,10 @@ Parsing
 
 .. autoclass:: Parser
 
+   .. automethod:: add_data
+
+   .. automethod:: get_next_message
+
 Message objects
 ---------------
 

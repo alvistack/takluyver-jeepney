@@ -1,5 +1,6 @@
 from enum import Enum, IntEnum
 import struct
+from typing import Optional
 
 class SizeLimitError(ValueError):
     """Raised when trying to (de-)serialise data exceeding D-Bus' size limit.
@@ -395,7 +396,7 @@ class Message:
         return "{}({!r}, {!r})".format(type(self).__name__, self.header, self.body)
 
     @classmethod
-    def from_buffer(cls, buf):
+    def from_buffer(cls, buf: bytes) -> 'Message':
         header, pos = Header.from_buffer(buf)
         body = ()
         if HeaderFields.signature in header.fields:
@@ -404,8 +405,12 @@ class Message:
             body = body_type.parse_data(buf, pos, header.endianness)[0]
         return cls(header, body)
 
-    def serialise(self, serial=None):
-        """Convert this message to bytes."""
+    def serialise(self, serial=None) -> bytes:
+        """Convert this message to bytes.
+
+        Specifying *serial* overrides the ``msg.header.serial`` field, so a
+        connection can its own serial number without modifying the message.
+        """
         endian = self.header.endianness
 
         if HeaderFields.signature in self.header.fields:
@@ -429,8 +434,8 @@ class Parser:
         self.buf = b''
         self.next_msg_size = None
 
-    def add_data(self, data):
-        """Feed the parser newly read data, without parsing it."""
+    def add_data(self, data: bytes):
+        """Provide newly received data to the parser"""
         self.buf += data
 
     def feed(self, data):
@@ -441,7 +446,7 @@ class Parser:
         self.buf += data
         return list(iter(self.get_next_message, None))
 
-    def get_next_message(self):
+    def get_next_message(self) -> Optional[Message]:
         """Parse one message, if there is enough data.
 
         Returns None if it doesn't have a complete message.
