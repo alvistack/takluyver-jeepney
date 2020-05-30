@@ -89,6 +89,7 @@ async def open_dbus_connection(bus='SESSION') -> DBusConnection:
     # Authentication finished
 
     conn = DBusConnection(sock)
+    conn.parser.add_data(auth_parser.buffer)
 
     # Say *Hello* to the message bus - this must be the first message, and the
     # reply gives us our unique name.
