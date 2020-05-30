@@ -13,6 +13,12 @@ from jeepney.bus_messages import message_bus
 
 log = logging.getLogger(__name__)
 
+__all__ = [
+    'open_dbus_connection',
+    'open_dbus_requester',
+    'Proxy',
+]
+
 
 class DBusConnection(Channel):
     """A 'plain' D-Bus connection with no matching of replies.
@@ -65,7 +71,7 @@ class DBusConnection(Channel):
         return DBusRequester(self)
 
 
-async def connect_and_authenticate(bus='SESSION') -> DBusConnection:
+async def open_dbus_connection(bus='SESSION') -> DBusConnection:
     """Open a 'plain' D-Bus connection, with no new tasks"""
     bus_addr = get_bus(bus)
     sock : trio.SocketStream = await trio.open_unix_socket(bus_addr)
@@ -286,7 +292,7 @@ class _ClientConnectionContext:
         self.bus = bus
 
     async def __aenter__(self):
-        self.conn = await connect_and_authenticate(self.bus)
+        self.conn = await open_dbus_connection(self.bus)
         self.req_ctx = self.conn.requester()
         return await self.req_ctx.__aenter__()
 
@@ -295,7 +301,7 @@ class _ClientConnectionContext:
         await self.conn.aclose()
 
 
-def open_requester(bus='SESSION'):
+def open_dbus_requester(bus='SESSION'):
     """Open a 'client' D-Bus connection with a receiver task.
 
     Use as an async context manager::

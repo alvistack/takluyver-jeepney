@@ -5,7 +5,7 @@ sys.excepthook =  sys.__excepthook__
 import trio
 
 from jeepney import MessageGenerator, new_method_call
-from jeepney.integrate.trio import open_requester, Proxy
+from jeepney.integrate.trio import open_dbus_requester, Proxy
 
 # ---- Message generator, created by jeepney.bindgen ----
 class Notifications(MessageGenerator):
@@ -32,7 +32,7 @@ class Notifications(MessageGenerator):
 
 
 async def send_notification():
-    async with open_requester(bus='SESSION') as req:
+    async with open_dbus_requester(bus='SESSION') as req:
         proxy = Proxy(Notifications(), req)
 
         resp = await proxy.Notify('jeepney_test',  # App name
