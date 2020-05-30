@@ -31,9 +31,6 @@ class MessageType(Enum):
     signal = 4
 
 
-msg_type_map = {t.value: t for t in MessageType}
-
-
 class MessageFlag(IntFlag):
     no_reply_expected = 1
     no_auto_start = 2
@@ -51,7 +48,6 @@ class HeaderFields(IntEnum):
     signature = 8
     unix_fds = 9
 
-header_fields_map = {t.value: t for t in HeaderFields}
 
 def padding(pos, step):
     pad = step - (pos % step)
@@ -321,7 +317,7 @@ _header_fields_type = Array(Struct([simple_types['y'], Variant()]))
 
 def parse_header_fields(buf, endianness):
     l, pos = _header_fields_type.parse_data(buf, 12, endianness)
-    return {header_fields_map[k]: v[1] for (k, v) in l}, pos
+    return {HeaderFields(k): v[1] for (k, v) in l}, pos
 
 
 header_field_codes = {
@@ -351,7 +347,7 @@ class Header:
         functions and methods instead.
         """
         self.endianness = endianness
-        self.message_type = message_type
+        self.message_type = MessageType(message_type)
         self.flags = MessageFlag(flags)
         self.protocol_version = protocol_version
         self.body_length = body_length
@@ -379,8 +375,7 @@ class Header:
         endian = endian_map[endian]
         bodylen, serial = struct.unpack(endian.struct_code() + 'II', buf[4:12])
         fields, pos = parse_header_fields(buf, endian)
-        return cls(endian, msg_type_map[msgtype], flags, pv, bodylen,
-                   serial, fields), pos
+        return cls(endian, msgtype, flags, pv, bodylen, serial, fields), pos
 
 
 class Message:
