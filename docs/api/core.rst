@@ -79,7 +79,7 @@ Message objects
 
    .. attribute:: flags
 
-      Integer representing message flags. See the D-Bus specification.
+      :class:`MessageFlag` object.
 
    .. attribute:: protocol_version
       :type: int
@@ -118,8 +118,8 @@ Exceptions
 
       Any data fields contained in the error message.
 
-Enums
------
+Enums & Flags
+-------------
 
 .. class:: Endianness
 
@@ -146,6 +146,23 @@ Enums
    .. autoattribute:: signature
 
    .. autoattribute:: unix_fds
+
+.. class:: MessageFlag
+
+   .. autoattribute:: no_reply_expected
+
+      On a method call message, indicates that a reply should not be sent.
+
+   .. autoattribute:: no_auto_start
+
+      D-Bus includes a mechanism to start a service on demand to handle
+      messages. If this flag is set, it will avoid that, only handling the
+      message if the target is already running.
+
+   .. autoattribute:: allow_interactive_authorization
+
+      Signals that the recipient may prompt the user for elevated privileges
+      to handle the request. The D-Bus specification has more details.
 
 .. class:: MessageType
 

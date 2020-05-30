@@ -1,4 +1,4 @@
-from enum import Enum, IntEnum
+from enum import Enum, IntEnum, IntFlag
 import struct
 from typing import Optional
 
@@ -33,10 +33,11 @@ class MessageType(Enum):
 
 msg_type_map = {t.value: t for t in MessageType}
 
-# Flags:
-NO_REPLY_EXPECTED = 1
-NO_AUTO_START = 2
-ALLOW_INTERACTIVE_AUTHORIZATION = 4
+
+class MessageFlag(IntFlag):
+    no_reply_expected = 1
+    no_auto_start = 2
+    allow_interactive_authorization = 4
 
 
 class HeaderFields(IntEnum):
@@ -351,7 +352,7 @@ class Header:
         """
         self.endianness = endianness
         self.message_type = message_type
-        self.flags = flags
+        self.flags = MessageFlag(flags)
         self.protocol_version = protocol_version
         self.body_length = body_length
         self.serial = serial
