@@ -361,12 +361,14 @@ class Header:
             self.endianness, self.message_type, self.flags,
             self.protocol_version, self.body_length, self.serial, self.fields)
 
-    def serialise(self):
+    def serialise(self, serial=None):
         s = self.endianness.struct_code() + 'cBBBII'
+        if serial is None:
+            serial = self.serial
         return struct.pack(s, self.endianness.dbus_code(),
                            self.message_type.value, self.flags,
                            self.protocol_version,
-                           self.body_length, self.serial) \
+                           self.body_length, serial) \
                 + serialise_header_fields(self.fields, self.endianness)
 
     @classmethod
@@ -402,7 +404,7 @@ class Message:
             body = body_type.parse_data(buf, pos, header.endianness)[0]
         return cls(header, body)
 
-    def serialise(self):
+    def serialise(self, serial=None):
         """Convert this message to bytes."""
         endian = self.header.endianness
 
@@ -415,7 +417,7 @@ class Message:
 
         self.header.body_length = len(body_buf)
 
-        header_buf = self.header.serialise()
+        header_buf = self.header.serialise(serial=serial)
         pad  = b'\0' * padding(len(header_buf), 8)
         return header_buf + pad + body_buf
 
@@ -427,15 +429,23 @@ class Parser:
         self.buf = b''
         self.next_msg_size = None
 
+    def add_data(self, data):
+        """Feed the parser newly read data, without parsing it."""
+        self.buf += data
+
     def feed(self, data):
         """Feed the parser newly read data.
 
         Returns a list of messages completed by the new data.
         """
         self.buf += data
-        return list(iter(self._read1, None))
+        return list(iter(self.get_next_message, None))
 
-    def _read1(self):
+    def get_next_message(self):
+        """Parse one message, if there is enough data.
+
+        Returns None if it doesn't have a complete message.
+        """
         if self.next_msg_size is None:
             if len(self.buf) >= 16:
                 self.next_msg_size = calc_msg_size(self.buf)
