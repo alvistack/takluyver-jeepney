@@ -212,11 +212,14 @@ class Array:
             # print('Array elem', pos)
             v, pos = self.elt_type.parse_data(buf, pos, endianness)
             res.append(v)
+        if isinstance(self.elt_type, DictEntry):
+            # Convert list of 2-tuples to dict
+            res = dict(res)
         return res, pos
 
     def serialise(self, data, pos, endianness):
         if isinstance(self.elt_type, DictEntry) and isinstance(data, dict):
-            data = sorted(data.items())
+            data = data.items()
         elif (self.elt_type == simple_types['y']) and isinstance(data, bytes):
             pass
         elif not isinstance(data, list):
