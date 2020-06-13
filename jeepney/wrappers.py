@@ -202,3 +202,15 @@ class DBusErrorResponse(Exception):
 
     def __str__(self):
         return '[{}] {}'.format(self.name, self.data)
+
+
+def unwrap_msg(msg: Message):
+    """Get the body of a message, raising DBusErrorResponse for error messages
+
+    This is to be used with replies to method_call messages, which may be
+    method_return or error.
+    """
+    if msg.header.message_type == MessageType.error:
+        raise DBusErrorResponse(msg)
+
+    return msg.body

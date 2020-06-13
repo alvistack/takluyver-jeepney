@@ -2,13 +2,16 @@
 """
 from errno import ECONNRESET
 import functools
+from itertools import count
 import os
+from selectors import DefaultSelector, EVENT_READ
 import socket
+import time
 
+from jeepney import Parser, Message, MessageType, HeaderFields
 from jeepney.auth import SASLParser, make_auth_external, BEGIN, AuthenticationError
 from jeepney.bus import get_bus
-from jeepney.low_level import Parser, MessageType
-from jeepney.wrappers import ProxyBase
+from jeepney.wrappers import ProxyBase, unwrap_msg
 from jeepney.routing import Router
 from jeepney.bus_messages import message_bus
 
@@ -37,7 +40,11 @@ class DBusConnection:
     def __init__(self, sock):
         self.sock = sock
         self.parser = Parser()
+        self.outgoing_serial = count(start=1)
         self.router = Router(_Future)
+        self.selector = DefaultSelector()
+        self.select_key = self.selector.register(sock, EVENT_READ)
+
         self.bus_proxy = Proxy(message_bus, self)
         hello_reply = self.bus_proxy.Hello()
         self.unique_name = hello_reply[0]
@@ -49,51 +56,95 @@ class DBusConnection:
         self.close()
         return False
 
-    def send_message(self, message):
-        future = self.router.outgoing(message)
-        data = message.serialise()
+    def send_message(self, message: Message, serial=None):
+        if serial is None:
+            serial = next(self.outgoing_serial)
+        data = message.serialise(serial=serial)
         self.sock.sendall(data)
-        return future
 
-    def recv_messages(self):
+    def receive(self, timeout=None):
+        """Return the next available message from the connection
+
+        If the data is ready, this will return immediately, even if timeout<=0.
+        Otherwise, it will wait for up to timeout seconds, or indefinitely if
+        timeout is None. If no message comes in time, it raises TimeoutError.
+        """
+        if timeout is not None:
+            deadline = time.monotonic() + timeout
+        else:
+            deadline = None
+
+        while True:
+            msg = self.parser.get_next_message()
+            if msg is not None:
+                return msg
+
+            if deadline is not None:
+                timeout = deadline - time.monotonic()
+
+            b = self._read_some_data(timeout)
+            self.parser.add_data(b)
+
+    def _read_some_data(self, timeout=None):
+        for key, ev in self.selector.select(timeout):
+            if key == self.select_key:
+                return unwrap_read(self.sock.recv(4096))
+
+        raise TimeoutError
+
+    def recv_messages(self, timeout=None):
         """Read data from the socket and handle incoming messages.
         
         Blocks until at least one message has been read.
         """
-        while True:
-            b = unwrap_read(self.sock.recv(4096))
-            msgs = self.parser.feed(b)
-            if msgs:
-                for msg in msgs:
-                    self.router.incoming(msg)
-                return
+        msg = self.receive(timeout=timeout)
+        self.router.incoming(msg)
 
-    def send_and_get_reply(self, message):
+    def send_and_get_reply(self, message, timeout=None, unwrap=True):
         """Send a message, wait for the reply and return it.
         """
-        future = self.send_message(message)
-        while not future.done():
-            self.recv_messages()
+        if timeout is not None:
+            deadline = time.monotonic() + timeout
+        else:
+            deadline = None
 
-        return future.result()
+        serial = next(self.outgoing_serial)
+        self.send_message(message, serial=serial)
+        while True:
+            if deadline is not None:
+                timeout = deadline - time.monotonic()
+            msg_in = self.receive(timeout=timeout)
+            reply_to = msg_in.header.fields.get(HeaderFields.reply_serial, -1)
+            if reply_to == serial:
+                if unwrap:
+                    return unwrap_msg(msg_in)
+                return msg_in
+            self.router.incoming(msg_in)
 
     def close(self):
+        self.selector.close()
         self.sock.close()
 
 class Proxy(ProxyBase):
-    def __init__(self, msggen, connection):
+    """A blocking proxy for calling D-Bus methods
+
+    timeout (seconds) applies to each method call, covering sending & receiving.
+    """
+    def __init__(self, msggen, connection, timeout=None):
         super().__init__(msggen)
         self._connection = connection
+        self._timeout = timeout
 
     def __repr__(self):
-        return "Proxy({}, {})".format(self._msggen, self._connection)
+        extra = '' if (self._timeout is None) else f', timeout={self._timeout}'
+        return f"Proxy({self._msggen}, {self._connection}{extra})"
 
     def _method_call(self, make_msg):
         @functools.wraps(make_msg)
         def inner(*args, **kwargs):
             msg = make_msg(*args, **kwargs)
             assert msg.header.message_type is MessageType.method_call
-            return self._connection.send_and_get_reply(msg)
+            return self._connection.send_and_get_reply(msg, timeout=self._timeout)
 
         return inner
 
