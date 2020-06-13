@@ -1,5 +1,5 @@
 before_script:
-  - pip install pytest testpath
+  - pip install '.[test]'
 
 test_job_py38:
   image: python:3.8

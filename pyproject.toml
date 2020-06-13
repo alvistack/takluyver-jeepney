@@ -17,6 +17,7 @@ classifiers = [
 
 [tool.flit.metadata.requires-extra]
 test = [
+    "pytest",
     "pytest-trio",
     "pytest-asyncio",
     "testpath",
