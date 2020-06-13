@@ -16,7 +16,12 @@ classifiers = [
 ]
 
 [tool.flit.metadata.requires-extra]
-dev = ["testpath"]
+test = [
+    "pytest-trio",
+    "pytest-asyncio",
+    "testpath",
+    "trio",
+]
 
 [tool.flit.metadata.urls]
 Documentation = "https://jeepney.readthedocs.io/en/latest/"
