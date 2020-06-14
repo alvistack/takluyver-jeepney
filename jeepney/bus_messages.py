@@ -131,13 +131,20 @@ class MatchRule:
     def __init__(self, *, type=None, sender=None, interface=None, member=None,
                  path=None, path_namespace=None, destination=None,
                  eavesdrop=False):
-        self.type = type
-        self.sender = sender
-        self.interface = interface
-        self.member = member
-        self.path = path
+        if isinstance(type, str):
+            type = MessageType[type]
+        self.message_type = type
+        fields = {
+            'sender': sender,
+            'interface': interface,
+            'member': member,
+            'path': path,
+            'destination': destination,
+        }
+        self.header_fields = {
+            k: v for (k, v) in fields.items() if (v is not None)
+        }
         self.path_namespace = path_namespace
-        self.destination = destination
         self.eavesdrop = eavesdrop
         self.arg_conditions = {}
 
@@ -155,37 +162,35 @@ class MatchRule:
 
     def serialise(self) -> str:
         """Convert to a string to use in an AddMatch call to the message bus"""
-        fields = ('type', 'sender', 'interface', 'member',
-                  'path', 'path_namespace', 'destination')
-        parts = []
-        for field in fields:
-            val = getattr(self, field)
-            if val is not None:
-                val = val.replace("'", r"'\''")
-                parts.append(f"{field}='{val}'")
+        pairs = list(self.header_fields.items())
+
+        if self.message_type:
+            pairs.append(('type', self.message_type.name))
 
         if self.eavesdrop:
-            parts.append('eavesdrop=true')
+            pairs.append(('eavesdrop', 'true'))
 
         for argno, (val, kind) in self.arg_conditions.items():
             if kind == 'string':
                 kind = ''
-            val = val.replace("'", r"'\''")
-            parts.append(f"arg{argno}{kind}='{val}'")
+            pairs.append((f'arg{argno}{kind}', val))
 
-        return ','.join(parts)
+        # Quoting rules: single quotes ('') needed if the value contains a comma.
+        # A literal ' can only be represented outside single quotes, by
+        # backslash-escaping it. No escaping inside the quotes.
+        # The simplest way to handle this is to use '' around every value, and
+        # use '\'' (end quote, escaped ', restart quote) for literal ' .
+        return ','.join(
+            "{}='{}'".format(k, v.replace("'", r"'\''")) for (k, v) in pairs
+        )
 
     def matches(self, msg: Message) -> bool:
         """Returns True if msg matches this rule"""
         h = msg.header
-        if (self.type is not None) and h.message_type != MessageType[self.type]:
+        if (self.message_type is not None) and h.message_type != self.message_type:
             return False
 
-        fields = ('sender', 'interface', 'member', 'path', 'destination')
-        for field in fields:
-            expected = getattr(self, field, None)
-            if expected is None:
-                continue
+        for field, expected in self.header_fields.items():
             if h.fields.get(HeaderFields[field], None) != expected:
                 return False
 
