@@ -2,7 +2,7 @@ import asyncio
 
 import pytest
 
-from jeepney import DBusAddress, MessageType, new_method_call
+from jeepney import DBusAddress, new_method_call
 from jeepney.bus_messages import message_bus
 from jeepney.integrate.asyncio import connect_and_authenticate, Proxy
 from .utils import have_session_bus
