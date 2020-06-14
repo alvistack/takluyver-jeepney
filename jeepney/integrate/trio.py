@@ -8,7 +8,7 @@ from trio.hazmat import Abort, current_task, reschedule, wait_task_rescheduled
 from jeepney.auth import SASLParser, make_auth_external, BEGIN, AuthenticationError
 from jeepney.bus import get_bus
 from jeepney.low_level import Parser, MessageType, Message, HeaderFields
-from jeepney.wrappers import ProxyBase
+from jeepney.wrappers import ProxyBase, unwrap_msg
 from jeepney.bus_messages import message_bus
 
 log = logging.getLogger(__name__)
@@ -281,7 +281,8 @@ class Proxy(ProxyBase):
         async def inner(*args, **kwargs):
             msg = make_msg(*args, **kwargs)
             assert msg.header.message_type is MessageType.method_call
-            return await self._requester.send_and_get_reply(msg)
+            reply = await self._requester.send_and_get_reply(msg)
+            return unwrap_msg(reply)
 
         return inner
 
