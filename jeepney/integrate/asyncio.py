@@ -4,7 +4,7 @@ from itertools import count
 from jeepney.auth import SASLParser, make_auth_external, BEGIN, AuthenticationError
 from jeepney.bus import get_bus
 from jeepney import HeaderFields, Message, MessageType, Parser
-from jeepney.wrappers import ProxyBase
+from jeepney.wrappers import ProxyBase, unwrap_msg
 from jeepney.routing import Router
 from jeepney.bus_messages import message_bus
 
@@ -124,10 +124,12 @@ class DBusRouter:
     def remove_filter(self, filter_id):
         return self._filter_ids.pop(filter_id)[1]
 
-    async def close(self):
-        """Stop the sender & receiver tasks"""
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
         self._rcv_task.cancel()
-        await self._conn.close()
+        return False
 
     # Code to run in receiver task ------------------------------------
 
@@ -145,7 +147,7 @@ class DBusRouter:
         for rule, q in self._filters.values():
             if rule.matches(msg):
                 try:
-                    q.put_nowait()
+                    q.put_nowait(msg)
                 except asyncio.QueueFull:
                     pass
 
@@ -161,6 +163,22 @@ class DBusRouter:
             futures, self._reply_futures = self._reply_futures, {}
             for fut in futures.values():
                 fut.set_exception(NoReplyError("Reply receiver stopped"))
+
+class open_dbus_router:
+    conn = None
+    req_ctx = None
+
+    def __init__(self, bus='SESSION'):
+        self.bus = bus
+
+    async def __aenter__(self):
+        self.conn = await open_dbus_connection(self.bus)
+        self.req_ctx = DBusRouter(self.conn)
+        return await self.req_ctx.__aenter__()
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        await self.req_ctx.__aexit__(exc_type, exc_val, exc_tb)
+        await self.conn.close()
 
 
 class NoReplyError(Exception):
@@ -205,19 +223,31 @@ class DBusProtocol(asyncio.Protocol):
         self.transport.write(data)
         return future
 
+    async def send_and_get_reply(self, message):
+        if message.header.message_type != MessageType.method_call:
+            raise TypeError("Only method call messages have replies")
+
+        return await self.send_message(message)
+
 class Proxy(ProxyBase):
-    def __init__(self, msggen, protocol):
+    def __init__(self, msggen, router):
         super().__init__(msggen)
-        self._protocol = protocol
+        self._router = router
 
     def __repr__(self):
-        return 'Proxy({}, {})'.format(self._msggen, self._protocol)
+        return 'Proxy({}, {})'.format(self._msggen, self._router)
 
     def _method_call(self, make_msg):
-        def inner(*args, **kwargs):
+        async def inner(*args, **kwargs):
             msg = make_msg(*args, **kwargs)
             assert msg.header.message_type is MessageType.method_call
-            return self._protocol.send_message(msg)
+            reply = await self._router.send_and_get_reply(msg)
+
+            # New implementation (DBusRouter) gives a Message object back,
+            # but the older DBusProtocol unwraps it for us.
+            if isinstance(reply, Message):
+                reply = unwrap_msg(reply)
+            return reply
 
         return inner
 
