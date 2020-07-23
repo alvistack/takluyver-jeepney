@@ -2,7 +2,7 @@ import pytest
 
 from jeepney import new_method_call, MessageType, DBusAddress
 from jeepney.bus_messages import message_bus
-from jeepney.integrate.blocking import connect_and_authenticate, Proxy
+from jeepney.integrate.blocking import open_dbus_connection, Proxy
 from .utils import have_session_bus
 
 pytestmark = pytest.mark.skipif(
@@ -11,7 +11,7 @@ pytestmark = pytest.mark.skipif(
 
 @pytest.fixture
 def session_conn():
-    with connect_and_authenticate(bus='SESSION') as conn:
+    with open_dbus_connection(bus='SESSION') as conn:
         yield conn
 
 
