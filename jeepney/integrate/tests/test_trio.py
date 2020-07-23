@@ -4,7 +4,7 @@ import pytest
 from jeepney import DBusAddress, MessageType, new_method_call
 from jeepney.bus_messages import message_bus
 from jeepney.integrate.trio import (
-    open_dbus_connection, open_dbus_requester, Proxy,
+    open_dbus_connection, open_dbus_router, Proxy,
 )
 from .utils import have_session_bus
 
@@ -31,7 +31,7 @@ bus_peer = DBusAddress(
 
 async def test_send_and_get_reply():
     ping_call = new_method_call(bus_peer, 'Ping')
-    async with open_dbus_requester(bus='SESSION') as req:
+    async with open_dbus_router(bus='SESSION') as req:
         with trio.fail_after(5):
             reply = await req.send_and_get_reply(ping_call)
 
@@ -39,7 +39,7 @@ async def test_send_and_get_reply():
     assert reply.body == ()
 
 async def test_proxy():
-    async with open_dbus_requester(bus='SESSION') as req:
+    async with open_dbus_router(bus='SESSION') as req:
         proxy = Proxy(message_bus, req)
         name = "io.gitlab.takluyver.jeepney.examples.Server"
         res = await proxy.RequestName(name)
