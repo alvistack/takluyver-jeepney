@@ -194,6 +194,8 @@ def connect_and_authenticate(bus='SESSION'):
     conn.parser.buf = auth_parser.buffer
     return conn
 
+open_dbus_connection = connect_and_authenticate
+
 if __name__ == '__main__':
     conn = connect_and_authenticate()
     print("Unique name:", conn.unique_name)

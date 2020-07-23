@@ -6,7 +6,7 @@ import time
 
 from jeepney import MessageType, HeaderFields, new_method_return, new_error
 from jeepney.bus_messages import message_bus
-from jeepney.integrate.blocking import connect_and_authenticate
+from jeepney.integrate.blocking import open_dbus_connection
 
 SERVER_NAME = "io.gitlab.takluyver.jeepney.examples.Server"
 
@@ -20,7 +20,7 @@ def double(n):
 def divide(n, d):
     return n / d
 
-with connect_and_authenticate() as connection:
+with open_dbus_connection() as connection:
     print("My unique name is:", connection.unique_name)
 
     # Request an additional name on the message bus
