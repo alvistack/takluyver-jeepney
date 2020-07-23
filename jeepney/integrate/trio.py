@@ -1,5 +1,7 @@
 from itertools import count
 import logging
+from math import inf
+
 from outcome import Value, Error
 import trio
 from trio.abc import Channel, SendChannel
@@ -15,7 +17,7 @@ log = logging.getLogger(__name__)
 
 __all__ = [
     'open_dbus_connection',
-    'open_dbus_requester',
+    'open_dbus_router',
     'Proxy',
 ]
 
@@ -57,18 +59,18 @@ class DBusConnection(Channel):
     async def aclose(self):
         await self.socket.aclose()
 
-    def requester(self):
+    def router(self):
         """Temporarily wrap this connection as a DBusRequester
 
         To be used like::
 
-            async with conn.requester() as req:
+            async with conn.router() as req:
                 reply = await req.send_and_get_reply(msg)
 
-        While the requester is running, you shouldn't use :meth:`receive`.
-        Once the requester is closed, you can use the plain connection again.
+        While the router is running, you shouldn't use :meth:`receive`.
+        Once the router is closed, you can use the plain connection again.
         """
-        return DBusRequester(self)
+        return DBusRouter(self)
 
 
 async def open_dbus_connection(bus='SESSION') -> DBusConnection:
@@ -93,8 +95,8 @@ async def open_dbus_connection(bus='SESSION') -> DBusConnection:
 
     # Say *Hello* to the message bus - this must be the first message, and the
     # reply gives us our unique name.
-    async with conn.requester() as requester:
-        reply = await requester.send_and_get_reply(message_bus.Hello())
+    async with conn.router() as router:
+        reply = await router.send_and_get_reply(message_bus.Hello())
         conn.unique_name = reply.body[0]
 
     return conn
@@ -141,7 +143,7 @@ class Future:
         return (await wait_task_rescheduled(abort_fn))
 
 
-class DBusRequester:
+class DBusRouter:
     """A 'client' D-Bus connection which can wait for a specific reply.
 
     This runs a background receiver task, and makes it possible to send a
@@ -152,12 +154,12 @@ class DBusRequester:
     _rcv_cancel_scope = None
     is_running = False
 
-    def __init__(self, conn: DBusConnection,
-                 incoming_method_calls=None):
+    def __init__(self, conn: DBusConnection):
         self._conn = conn
         self._reply_futures = {}
         self._to_send, self._to_be_sent = trio.open_memory_channel(0)
-        self._incoming_calls = incoming_method_calls or DummySendChannel()
+        self._filters = {}
+        self._filter_ids = count()
 
     async def send(self, message, *, serial=None):
         if serial is None:
@@ -187,6 +189,14 @@ class DBusRequester:
         finally:
             del self._reply_futures[serial]
 
+    def add_filter(self, rule, channel: trio.MemorySendChannel):
+        fid = next(self._filter_ids)
+        self._filters[fid] = (rule, channel)
+        return fid
+
+    def remove_filter(self, filter_id) -> trio.MemorySendChannel:
+        return self._filter_ids.pop(filter_id)[1]
+
     # Task management -------------------------------------------
 
     async def start(self, nursery: trio.Nursery):
@@ -197,12 +207,30 @@ class DBusRequester:
 
     async def aclose(self):
         """Stop the sender & receiver tasks"""
+        # Close the channel to the sender task. Normally the task will be
+        # waiting for messages to send, and this is enough to stop it.
+        # This can't block, but we shield it so the code below can run if we're
+        # in cleanup after cancellation.
+        with trio.move_on_after(1) as cleanup_scope:
+            cleanup_scope.shield = True
+            await self._to_send.aclose()
+
+        # Allow a short grace period for send operations to complete.
+        # This should ensure that in normal conditions, we don't send an
+        # incomplete message (which breaks the connection), but avoids
+        # hanging if sending has somehow got stuck.
         if self._send_cancel_scope is not None:
-            self._send_cancel_scope.cancel()
+            self._send_cancel_scope.deadline = trio.current_time() + 1
             self._send_cancel_scope = None
+
+        # It doesn't matter if we receive a partial message - the connection
+        # should ensure that whatever is received is fed to the parser.
         if self._rcv_cancel_scope is not None:
             self._rcv_cancel_scope.cancel()
             self._rcv_cancel_scope = None
+
+        #
+        await trio.hazmat.checkpoint()
 
     async def __aenter__(self):
         self._nursery_mgr = trio.open_nursery()
@@ -226,26 +254,23 @@ class DBusRequester:
 
     # Code to run in receiver task ------------------------------------
 
-    def _dispatch(self, msg):
+    def _dispatch(self, msg: Message):
         """Handle one received message"""
         msg_type = msg.header.message_type
-        if msg_type == MessageType.method_call:
-            try:
-                self._incoming_calls.send_nowait(msg)
-            except trio.WouldBlock:
-                log.debug("Discarded incoming method call (queue full): %s", msg)
 
-        elif msg_type in (MessageType.method_return, MessageType.error):
+        if msg_type in (MessageType.method_return, MessageType.error):
             rep_serial = msg.header.fields.get(HeaderFields.reply_serial, -1)
             fut = self._reply_futures.get(rep_serial, None)
             if fut is not None:
                 fut.set(Value(msg))
-            else:
-                log.debug("Discarded reply (nothing waiting for it): %s", msg)
+                return
 
-        else:
-            # TODO: Handle signal messages
-            log.debug("Discarded signal message: %s", msg)
+        for rule, chan in self._filters.values():
+            if rule.matches(msg):
+                try:
+                    chan.send_nowait(msg)
+                except trio.WouldBlock:
+                    pass
 
     async def _receiver(self, task_status=trio.TASK_STATUS_IGNORED):
         """Receiver loop - runs in a separate task"""
@@ -253,7 +278,7 @@ class DBusRequester:
             self.is_running = True
             task_status.started(cscope)
             try:
-                while True:
+                while cscope.deadline == inf:
                     msg = await self._conn.receive()
                     self._dispatch(msg)
             finally:
@@ -263,7 +288,12 @@ class DBusRequester:
                 for fut in futures.values():
                     fut.set(Error(NoReplyError("Reply receiver stopped")))
 
-                await self._incoming_calls.aclose()
+                # Closing a memory channel can't block, but it only has an
+                # async close method, so we need to shield it from cancellation.
+                with trio.move_on_after(3) as cleanup_scope:
+                    for _, chan in self._filters.values():
+                        cleanup_scope.shield = True
+                        await chan.aclose()
 
 
 class NoReplyError(Exception):
@@ -271,23 +301,23 @@ class NoReplyError(Exception):
 
 
 class Proxy(ProxyBase):
-    def __init__(self, msggen, requester):
+    def __init__(self, msggen, router):
         super().__init__(msggen)
-        if not isinstance(requester, DBusRequester):
+        if not isinstance(router, DBusRouter):
             raise TypeError("Proxy can only be used with DBusRequester")
-        self._requester = requester
+        self._router = router
 
     def _method_call(self, make_msg):
         async def inner(*args, **kwargs):
             msg = make_msg(*args, **kwargs)
             assert msg.header.message_type is MessageType.method_call
-            reply = await self._requester.send_and_get_reply(msg)
+            reply = await self._router.send_and_get_reply(msg)
             return unwrap_msg(reply)
 
         return inner
 
 
-class _ClientConnectionContext:
+class _RouterContext:
     conn = None
     req_ctx = None
 
@@ -296,7 +326,7 @@ class _ClientConnectionContext:
 
     async def __aenter__(self):
         self.conn = await open_dbus_connection(self.bus)
-        self.req_ctx = self.conn.requester()
+        self.req_ctx = self.conn.router()
         return await self.req_ctx.__aenter__()
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
@@ -304,19 +334,19 @@ class _ClientConnectionContext:
         await self.conn.aclose()
 
 
-def open_dbus_requester(bus='SESSION'):
-    """Open a 'client' D-Bus connection with a receiver task.
+def open_dbus_router(bus='SESSION'):
+    """Open a D-Bus 'router' to dispatch messages from a receiver task.
 
     Use as an async context manager::
 
-        async with open_requester() as req:
+        async with open_dbus_router() as req:
             ...
 
     This is a shortcut for::
 
-        conn = await connect_and_authenticate()
+        conn = await open_dbus_connection()
         async with conn:
-            async with conn.requester() as req:
+            async with conn.router() as req:
                 ...
     """
-    return _ClientConnectionContext(bus)
+    return _RouterContext(bus)

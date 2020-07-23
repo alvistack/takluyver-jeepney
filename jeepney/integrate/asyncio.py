@@ -1,11 +1,171 @@
 import asyncio
+from itertools import count
 
 from jeepney.auth import SASLParser, make_auth_external, BEGIN, AuthenticationError
 from jeepney.bus import get_bus
-from jeepney.low_level import Parser, MessageType
+from jeepney import HeaderFields, Message, MessageType, Parser
 from jeepney.wrappers import ProxyBase
 from jeepney.routing import Router
 from jeepney.bus_messages import message_bus
+
+
+class DBusConnection:
+    def __init__(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
+        self.reader = reader
+        self.writer = writer
+        self.parser = Parser()
+        self.outgoing_serial = count(start=1)
+        self.unique_name = None
+        self.send_lock = asyncio.Lock()
+
+    async def send(self, message: Message, *, serial=None):
+        async with self.send_lock:
+            if serial is None:
+                serial = next(self.outgoing_serial)
+            self.writer.write(message.serialise(serial))
+            await self.writer.drain()
+
+    async def receive(self) -> Message:
+        while True:
+            msg = self.parser.get_next_message()
+            if msg is not None:
+                return msg
+
+            b = await self.reader.read(4096)
+            if not b:
+                raise EOFError
+            self.parser.add_data(b)
+
+    async def close(self):
+        self.writer.close()
+        await self.writer.wait_closed()
+
+
+async def open_dbus_connection(bus='SESSION'):
+    bus_addr = get_bus(bus)
+    reader, writer = await asyncio.open_unix_connection(bus_addr)
+
+    # Authentication flow
+    writer.write(b'\0' + make_auth_external())
+    await writer.drain()
+    auth_parser = SASLParser()
+    while not auth_parser.authenticated:
+        b = await reader.read(1024)
+        if not b:
+            raise EOFError("Socket closed before authentication")
+        auth_parser.feed(b)
+        if auth_parser.error:
+            raise AuthenticationError(auth_parser.error)
+
+    writer.write(BEGIN)
+    await writer.drain()
+    # Authentication finished
+
+    conn = DBusConnection(reader, writer)
+    conn.parser.add_data(auth_parser.buffer)
+
+    # Say *Hello* to the message bus - this must be the first message, and the
+    # reply gives us our unique name.
+    s = next(conn.outgoing_serial)
+    await conn.send(message_bus.Hello(), serial=s)
+    while True:
+        reply = await conn.receive()
+        if reply.header.fields.get(HeaderFields.reply_serial, -1) == s:
+            conn.unique_name = reply.body[0]
+            break
+
+    return conn
+
+class DBusRouter:
+    """A 'client' D-Bus connection which can wait for a specific reply.
+
+    This runs a background receiver task, and makes it possible to send a
+    request and wait for the relevant reply.
+    """
+    _nursery_mgr = None
+    _send_cancel_scope = None
+    _rcv_cancel_scope = None
+    is_running = False
+
+    def __init__(self, conn: DBusConnection):
+        self._conn = conn
+        self._reply_futures = {}
+        self._filters = {}
+        self._filter_ids = count()
+        self._rcv_task = asyncio.create_task(self._receiver())
+
+    async def send(self, message, *, serial=None):
+        await self._conn.send(message, serial=serial)
+
+    async def send_and_get_reply(self, message) -> Message:
+        """Send a method call message and wait for the reply
+
+        Returns the reply message (method return or error message type).
+        """
+        if message.header.message_type != MessageType.method_call:
+            raise TypeError("Only method call messages have replies")
+        if self._rcv_task.done():
+            raise RuntimeError("Receiver task is not running")
+
+        serial = next(self._conn.outgoing_serial)
+        self._reply_futures[serial] = reply_fut = asyncio.Future()
+
+        try:
+            await self.send(message, serial=serial)
+            return (await reply_fut)
+        finally:
+            del self._reply_futures[serial]
+
+    def add_filter(self, rule, channel: asyncio.Queue):
+        fid = next(self._filter_ids)
+        self._filters[fid] = (rule, channel)
+        return fid
+
+    def remove_filter(self, filter_id):
+        return self._filter_ids.pop(filter_id)[1]
+
+    async def close(self):
+        """Stop the sender & receiver tasks"""
+        self._rcv_task.cancel()
+        await self._conn.close()
+
+    # Code to run in receiver task ------------------------------------
+
+    def _dispatch(self, msg: Message):
+        """Handle one received message"""
+        msg_type = msg.header.message_type
+
+        if msg_type in (MessageType.method_return, MessageType.error):
+            rep_serial = msg.header.fields.get(HeaderFields.reply_serial, -1)
+            fut = self._reply_futures.get(rep_serial, None)
+            if fut is not None:
+                fut.set_result(msg)
+                return
+
+        for rule, q in self._filters.values():
+            if rule.matches(msg):
+                try:
+                    q.put_nowait()
+                except asyncio.QueueFull:
+                    pass
+
+    async def _receiver(self):
+        """Receiver loop - runs in a separate task"""
+        try:
+            while True:
+                msg = await self._conn.receive()
+                self._dispatch(msg)
+        finally:
+            self.is_running = False
+            # Send errors to any tasks still waiting for a message.
+            futures, self._reply_futures = self._reply_futures, {}
+            for fut in futures.values():
+                fut.set_exception(NoReplyError("Reply receiver stopped"))
+
+
+class NoReplyError(Exception):
+    pass
+
 
 class DBusProtocol(asyncio.Protocol):
     def __init__(self):

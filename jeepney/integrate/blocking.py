@@ -1,5 +1,6 @@
 """Synchronous IO wrappers around jeepney
 """
+from collections import deque
 from errno import ECONNRESET
 import functools
 from itertools import count
@@ -41,10 +42,15 @@ class DBusConnection:
         self.sock = sock
         self.parser = Parser()
         self.outgoing_serial = count(start=1)
-        self.router = Router(_Future)
         self.selector = DefaultSelector()
         self.select_key = self.selector.register(sock, EVENT_READ)
 
+        # Message routing machinery
+        self.router = Router(_Future)
+        self._filters = {}
+        self._filter_ids = count()
+
+        # Say Hello, get our unique name
         self.bus_proxy = Proxy(message_bus, self)
         hello_reply = self.bus_proxy.Hello()
         self.unique_name = hello_reply[0]
@@ -99,6 +105,9 @@ class DBusConnection:
         """
         msg = self.receive(timeout=timeout)
         self.router.incoming(msg)
+        for rule, chan in self._filters.values():
+            if rule.matches(msg):
+                chan.append(msg)
 
     def send_and_get_reply(self, message, timeout=None, unwrap=True):
         """Send a message, wait for the reply and return it.
@@ -120,6 +129,14 @@ class DBusConnection:
                     return unwrap_msg(msg_in)
                 return msg_in
             self.router.incoming(msg_in)
+
+    def add_filter(self, rule, channel: deque):
+        fid = next(self._filter_ids)
+        self._filters[fid] = (rule, channel)
+        return fid
+
+    def remove_filter(self, filter_id) -> deque:
+        return self._filters.pop(filter_id)[1]
 
     def close(self):
         self.selector.close()
