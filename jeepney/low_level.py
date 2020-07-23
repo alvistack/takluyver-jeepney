@@ -408,7 +408,7 @@ class Message:
         """Convert this message to bytes.
 
         Specifying *serial* overrides the ``msg.header.serial`` field, so a
-        connection can its own serial number without modifying the message.
+        connection can use its own serial number without modifying the message.
         """
         endian = self.header.endianness
 

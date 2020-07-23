@@ -62,13 +62,16 @@ class DBusConnection:
         self.close()
         return False
 
-    def send_message(self, message: Message, serial=None):
+    def send(self, message: Message, serial=None):
+        """Serialise and send a :class:`~.Message` object"""
         if serial is None:
             serial = next(self.outgoing_serial)
         data = message.serialise(serial=serial)
         self.sock.sendall(data)
 
-    def receive(self, timeout=None):
+    send_message = send  # Backwards compatibility
+
+    def receive(self, timeout=None) -> Message:
         """Return the next available message from the connection
 
         If the data is ready, this will return immediately, even if timeout<=0.
@@ -99,9 +102,9 @@ class DBusConnection:
         raise TimeoutError
 
     def recv_messages(self, timeout=None):
-        """Read data from the socket and handle incoming messages.
-        
-        Blocks until at least one message has been read.
+        """Receive one message and apply filters
+
+        See :meth:`add_filter`. Returns nothing.
         """
         msg = self.receive(timeout=timeout)
         self.router.incoming(msg)
@@ -110,7 +113,10 @@ class DBusConnection:
                 chan.append(msg)
 
     def send_and_get_reply(self, message, timeout=None, unwrap=True):
-        """Send a message, wait for the reply and return it.
+        """Send a message, wait for the reply and return it
+
+        Filters are applied to other messages received before the reply -
+        see :meth:`add_filter`.
         """
         if timeout is not None:
             deadline = time.monotonic() + timeout
@@ -128,24 +134,39 @@ class DBusConnection:
                 if unwrap:
                     return unwrap_msg(msg_in)
                 return msg_in
+
+            # Not the reply
             self.router.incoming(msg_in)
+            for rule, chan in self._filters.values():
+                if rule.matches(msg_in):
+                    chan.append(msg_in)
 
     def add_filter(self, rule, channel: deque):
+        """Create a filter for incoming messages
+
+        :param jeepney.MatchRule rule: Catch messages matching this rule
+        :param collections.deque channel: Matched messages will be added to this
+        :return: A filter ID to use with :meth:`remove_filter`
+        """
         fid = next(self._filter_ids)
         self._filters[fid] = (rule, channel)
         return fid
 
     def remove_filter(self, filter_id) -> deque:
+        """Remove a previously added filter"""
         return self._filters.pop(filter_id)[1]
 
     def close(self):
+        """Close this connection"""
         self.selector.close()
         self.sock.close()
 
 class Proxy(ProxyBase):
     """A blocking proxy for calling D-Bus methods
 
-    timeout (seconds) applies to each method call, covering sending & receiving.
+    :param msggen: A message generator object.
+    :param DBusConnection connection: Connection to send and receive messages.
+    :param float timeout: Seconds to wait for a reply, or None for no limit.
     """
     def __init__(self, msggen, connection, timeout=None):
         super().__init__(msggen)
@@ -177,7 +198,8 @@ def unwrap_read(b):
     return b
 
 
-def connect_and_authenticate(bus='SESSION'):
+def connect_and_authenticate(bus='SESSION') -> DBusConnection:
+    """Connect to a D-Bus message bus"""
     bus_addr = get_bus(bus)
     sock = socket.socket(family=socket.AF_UNIX)
     sock.connect(bus_addr)

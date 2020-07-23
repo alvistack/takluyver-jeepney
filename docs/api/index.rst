@@ -7,3 +7,4 @@ API reference
    core
    common_msgs
    auth
+   blocking

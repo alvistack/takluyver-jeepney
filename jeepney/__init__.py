@@ -6,6 +6,7 @@ from .low_level import (
     Parser, SizeLimitError,
 )
 from .bus import find_session_bus, find_system_bus
+from .bus_messages import *
 from .wrappers import *
 
 __version__ = '0.4.3'
