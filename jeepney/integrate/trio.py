@@ -5,12 +5,11 @@ from math import inf
 from outcome import Value, Error
 import trio
 from trio.abc import Channel, SendChannel
-from trio.hazmat import Abort, current_task, reschedule, wait_task_rescheduled
 
 from jeepney.auth import SASLParser, make_auth_external, BEGIN, AuthenticationError
 from jeepney.bus import get_bus
 from jeepney.low_level import Parser, MessageType, Message, HeaderFields
-from jeepney.wrappers import ProxyBase, unwrap_msg
+from jeepney.wrappers import ProxyBase, DBusErrorResponse
 from jeepney.bus_messages import message_bus
 
 log = logging.getLogger(__name__)
@@ -121,32 +120,22 @@ class DummySendChannel(SendChannel):
 
 
 class Future:
-    """A Future for trio.
-
-    Is this a bad idea? Trio doesn't offer futures itself, but I couldn't find
-    a neater way to achieve what I wanted.
-    """
+    """A very simple Future for trio based on `trio.Event`."""
     def __init__(self):
         self._outcome = None
-        self._task = None
+        self._event = trio.Event()
 
-    def set(self, outcome):
-        self._outcome = outcome
-        if self._task is not None:
-            reschedule(self._task, outcome)
+    def set_result(self, result):
+        self._outcome = Value(result)
+        self._event.set()
+
+    def set_exception(self, exc):
+        self._outcome = Error(exc)
+        self._event.set()
 
     async def get(self):
-        if self._outcome is not None:
-            await trio.hazmat.checkpoint()
-            return self._outcome.unwrap()
-
-        self._task = current_task()
-
-        def abort_fn(_):
-            self._task = None
-            return Abort.SUCCEEDED
-
-        return (await wait_task_rescheduled(abort_fn))
+        await self._event.wait()
+        return self._outcome.unwrap()
 
 
 class DBusRouter:
@@ -243,8 +232,8 @@ class DBusRouter:
             self._rcv_cancel_scope.cancel()
             self._rcv_cancel_scope = None
 
-        #
-        await trio.hazmat.checkpoint()
+        # Ensure trio checkpoint
+        await trio.sleep(0)
 
     async def __aenter__(self):
         self._nursery_mgr = trio.open_nursery()
@@ -276,7 +265,10 @@ class DBusRouter:
             rep_serial = msg.header.fields.get(HeaderFields.reply_serial, -1)
             fut = self._reply_futures.get(rep_serial, None)
             if fut is not None:
-                fut.set(Value(msg))
+                if msg_type is MessageType.method_return:
+                    fut.set_result(msg)
+                else:
+                    fut.set_exception(DBusErrorResponse(msg))
                 return
 
         for rule, chan in self._filters.values():
@@ -300,7 +292,7 @@ class DBusRouter:
                 # Send errors to any tasks still waiting for a message.
                 futures, self._reply_futures = self._reply_futures, {}
                 for fut in futures.values():
-                    fut.set(Error(NoReplyError("Reply receiver stopped")))
+                    fut.set_exception(NoReplyError("Reply receiver stopped"))
 
                 # Closing a memory channel can't block, but it only has an
                 # async close method, so we need to shield it from cancellation.
@@ -330,8 +322,7 @@ class Proxy(ProxyBase):
         async def inner(*args, **kwargs):
             msg = make_msg(*args, **kwargs)
             assert msg.header.message_type is MessageType.method_call
-            reply = await self._router.send_and_get_reply(msg)
-            return unwrap_msg(reply)
+            return (await self._router.send_and_get_reply(msg)).body
 
         return inner
 
