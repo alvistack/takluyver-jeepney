@@ -23,12 +23,12 @@ __all__ = [
 
 
 class DBusConnection(Channel):
-    """A 'plain' D-Bus connection with no matching of replies.
+    """A plain D-Bus connection with no matching of replies.
 
     This doesn't run any separate tasks: sending and receiving are done in
-    the task that calls those methods. It's suitable for easily implementing
-    servers: several worker tasks can receive requests and send replies.
-    For a typical client pattern, see DBusRequester.
+    the task that calls those methods. It's suitable for implementing servers:
+    several worker tasks can receive requests and send replies.
+    For a typical client pattern, see :class:`DBusRouter`.
 
     Implements trio's channel interface for Message objects.
     """
@@ -40,12 +40,14 @@ class DBusConnection(Channel):
         self.send_lock = trio.Lock()
 
     async def send(self, message: Message, *, serial=None):
+        """Serialise and send a :class:`~.Message` object"""
         async with self.send_lock:
             if serial is None:
                 serial = next(self.outgoing_serial)
             await self.socket.send_all(message.serialise(serial))
 
     async def receive(self) -> Message:
+        """Return the next available message from the connection"""
         while True:
             msg = self.parser.get_next_message()
             if msg is not None:
@@ -57,10 +59,11 @@ class DBusConnection(Channel):
             self.parser.add_data(b)
 
     async def aclose(self):
+        """Close the D-Bus connection"""
         await self.socket.aclose()
 
     def router(self):
-        """Temporarily wrap this connection as a DBusRequester
+        """Temporarily wrap this connection as a :class:`DBusRouter`
 
         To be used like::
 
@@ -74,7 +77,10 @@ class DBusConnection(Channel):
 
 
 async def open_dbus_connection(bus='SESSION') -> DBusConnection:
-    """Open a 'plain' D-Bus connection, with no new tasks"""
+    """Open a plain D-Bus connection
+
+    :return: :class:`DBusConnection`
+    """
     bus_addr = get_bus(bus)
     sock : trio.SocketStream = await trio.open_unix_socket(bus_addr)
 
@@ -144,10 +150,9 @@ class Future:
 
 
 class DBusRouter:
-    """A 'client' D-Bus connection which can wait for a specific reply.
+    """A client D-Bus connection which can wait for replies.
 
-    This runs a background receiver task, and makes it possible to send a
-    request and wait for the relevant reply.
+    This runs a separate receiver task and dispatches received messages.
     """
     _nursery_mgr = None
     _send_cancel_scope = None
@@ -162,6 +167,8 @@ class DBusRouter:
         self._filter_ids = count()
 
     async def send(self, message, *, serial=None):
+        """Send a message, don't wait for a reply
+        """
         if serial is None:
             serial = next(self._conn.outgoing_serial)
         b = message.serialise(serial)
@@ -190,11 +197,18 @@ class DBusRouter:
             del self._reply_futures[serial]
 
     def add_filter(self, rule, channel: trio.MemorySendChannel):
+        """Create a filter for incoming messages
+
+        :param jeepney.MatchRule rule: Catch messages matching this rule
+        :param trio.MemorySendChannel channel: Send matching messages here
+        :return: A filter ID to use with :meth:`remove_filter`
+        """
         fid = next(self._filter_ids)
         self._filters[fid] = (rule, channel)
         return fid
 
     def remove_filter(self, filter_id) -> trio.MemorySendChannel:
+        """Remove a previously added filter"""
         return self._filter_ids.pop(filter_id)[1]
 
     # Task management -------------------------------------------
@@ -301,6 +315,11 @@ class NoReplyError(Exception):
 
 
 class Proxy(ProxyBase):
+    """A trio proxy for calling D-Bus methods
+
+    :param msggen: A message generator object.
+    :param DBusRouter router: Router to send and receive messages.
+    """
     def __init__(self, msggen, router):
         super().__init__(msggen)
         if not isinstance(router, DBusRouter):
@@ -335,12 +354,15 @@ class _RouterContext:
 
 
 def open_dbus_router(bus='SESSION'):
-    """Open a D-Bus 'router' to dispatch messages from a receiver task.
+    """Open a D-Bus 'router' to send and receive messages.
 
     Use as an async context manager::
 
         async with open_dbus_router() as req:
             ...
+
+    :param str bus: 'SESSION' or 'SYSTEM' or a supported address.
+    :return: :class:`DBusRouter`
 
     This is a shortcut for::
 
