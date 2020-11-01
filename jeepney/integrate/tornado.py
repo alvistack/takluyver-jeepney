@@ -1,86 +1,234 @@
+from asyncio import as_completed, Future, wait_for
+from itertools import count
 import socket
-from tornado.concurrent import Future
-from tornado.gen import coroutine
 from tornado.ioloop import IOLoop
 from tornado.iostream import IOStream
+from tornado.locks import Event
+from tornado.queues import Queue, QueueFull
 
 from jeepney.auth import SASLParser, make_auth_external, BEGIN, AuthenticationError
 from jeepney.bus import get_bus
-from jeepney.low_level import Parser, MessageType
-from jeepney.wrappers import ProxyBase
+from jeepney.low_level import Parser, MessageType, HeaderFields, Message, MessageFlag
+from jeepney.wrappers import ProxyBase, unwrap_msg
 from jeepney.routing import Router
 from jeepney.bus_messages import message_bus
 
-class DBusConnection:
-    def __init__(self, bus_addr):
-        self.auth_parser = SASLParser()
+
+class DBusConnection2:
+    def __init__(self, stream: IOStream):
+        self.stream = stream
         self.parser = Parser()
-        self.router = Router(Future)
-        self.authentication = Future()
+        self.outgoing_serial = count(start=1)
         self.unique_name = None
 
-        self._sock = socket.socket(family=socket.AF_UNIX)
-        self.stream = IOStream(self._sock, read_chunk_size=4096)
+    async def send(self, message: Message, *, serial=None):
+        if serial is None:
+            serial = next(self.outgoing_serial)
+        # .write() immediately adds all the data to a buffer, so no lock needed
+        await self.stream.write(message.serialise(serial))
 
-        def connected():
-            self.stream.write(b'\0' + make_auth_external())
+    async def receive(self) -> Message:
+        while True:
+            msg = self.parser.get_next_message()
+            if msg is not None:
+                return msg
 
-        self.stream.connect(bus_addr, connected)
-        self.stream.read_until_close(streaming_callback=self.data_received)
+            b = await self.stream.read_bytes(4096, partial=True)
+            self.parser.add_data(b)
 
-    def _authenticated(self):
-        self.stream.write(BEGIN)
-        self.authentication.set_result(True)
-        self.data_received_post_auth(self.auth_parser.buffer)
+    def close(self):
+        self.stream.close()
 
-    def data_received(self, data):
-        if self.authentication.done():
-            return self.data_received_post_auth(data)
 
-        self.auth_parser.feed(data)
-        if self.auth_parser.authenticated:
-            self._authenticated()
-        elif self.auth_parser.error:
-            self.authentication.set_exception(AuthenticationError(self.auth_parser.error))
+async def open_dbus_connection(bus='SESSION'):
+    bus_addr = get_bus(bus)
+    stream = IOStream(socket.socket(family=socket.AF_UNIX))
+    await stream.connect(bus_addr)
+    await stream.write(b'\0' + make_auth_external())
 
-    def data_received_post_auth(self, data):
-        for msg in self.parser.feed(data):
-            self.router.incoming(msg)
+    auth_parser = SASLParser()
+    while not auth_parser.authenticated:
+        auth_parser.feed(await stream.read_bytes(1024, partial=True))
+        if auth_parser.error:
+            raise AuthenticationError(auth_parser.error)
 
-    def send_message(self, message):
-        if not self.authentication.done():
-            raise RuntimeError("Wait for authentication before sending messages")
+    await stream.write(BEGIN)
 
-        future = self.router.outgoing(message)
-        data = message.serialise()
-        self.stream.write(data)
-        return future
+    conn = DBusConnection2(stream)
+
+    with DBusRouter(conn) as router:
+        reply_body = await wait_for(Proxy(message_bus, router).Hello(), 10)
+        conn.unique_name = reply_body[0]
+
+    return conn
+
+
+class DBusRouter:
+    def __init__(self, conn: DBusConnection2):
+        self.conn = conn
+        self._reply_futures = {}
+        self._filters = {}
+        self._filter_ids = count()
+        self._stop_receiving = Event()
+        IOLoop.current().add_callback(self._receiver)
+
+        # For backwards compatibility - old-style signal callbacks
+        self.router = Router(Future)
+
+    async def send(self, message, *, serial=None):
+        await self.conn.send(message, serial=serial)
+
+    async def send_and_get_reply(self, message):
+        if message.header.message_type != MessageType.method_call:
+            raise TypeError("Only method call messages have replies")
+        if self._stop_receiving.is_set():
+            raise RuntimeError("This DBusRouter has been stopped")
+
+        serial = next(self.conn.outgoing_serial)
+        self._reply_futures[serial] = reply_fut = Future()
+
+        try:
+            await self.send(message, serial=serial)
+            return (await reply_fut)
+        finally:
+            del self._reply_futures[serial]
+
+    def add_filter(self, rule, channel: Queue):
+        fid = next(self._filter_ids)
+        self._filters[fid] = (rule, channel)
+        return fid
+
+    def remove_filter(self, filter_id):
+        return self._filter_ids.pop(filter_id)[1]
+
+    def stop(self):
+        self._stop_receiving.set()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.stop()
+        return False
+
+    # Backwards compatible interface (from old DBusConnection) --------
+
+    @property
+    def unique_name(self):
+        return self.conn.unique_name
+
+    async def send_message(self, message: Message):
+        if (
+                message.header.message_type == MessageType.method_return
+                and not (message.header.flags & MessageFlag.no_reply_expected)
+        ):
+            return unwrap_msg(await self.send_and_get_reply(message))
+        else:
+            await self.send(message)
+
+
+    # Code to run in receiver task ------------------------------------
+
+    def _dispatch(self, msg: Message):
+        """Handle one received message"""
+        msg_type = msg.header.message_type
+
+        if msg_type in (MessageType.method_return, MessageType.error):
+            rep_serial = msg.header.fields.get(HeaderFields.reply_serial, -1)
+            fut = self._reply_futures.get(rep_serial, None)
+            if fut is not None:
+                fut.set_result(msg)
+                return
+
+        for rule, q in self._filters.values():
+            if rule.matches(msg):
+                try:
+                    q.put_nowait(msg)
+                except QueueFull:
+                    pass
+
+    async def _receiver(self):
+        """Receiver loop - runs in a separate task"""
+        try:
+            while True:
+                for coro in as_completed([self.conn.receive(), self._stop_receiving.wait()]):
+                    msg = await coro
+                    if msg is None:
+                        return  # Stopped
+                    self._dispatch(msg)
+                    self.router.incoming(msg)
+        finally:
+            self.is_running = False
+            # Send errors to any tasks still waiting for a message.
+            futures, self._reply_futures = self._reply_futures, {}
+            for fut in futures.values():
+                fut.set_exception(NoReplyError("Reply receiver stopped"))
+
+
+class NoReplyError(Exception):
+    pass
+
 
 class Proxy(ProxyBase):
-    def __init__(self, msggen, connection):
+    def __init__(self, msggen, router: DBusRouter):
         super().__init__(msggen)
-        self._connection = connection
+        self._router = router
 
     def __repr__(self):
-        return 'Proxy({}, {})'.format(self._msggen, self._connection)
+        return 'Proxy({}, {})'.format(self._msggen, self._router)
 
     def _method_call(self, make_msg):
-        def inner(*args, **kwargs):
+        async def inner(*args, **kwargs):
             msg = make_msg(*args, **kwargs)
             assert msg.header.message_type is MessageType.method_call
-            return self._connection.send_message(msg)
+            return unwrap_msg(await self._router.send_and_get_reply(msg))
 
         return inner
 
 
-@coroutine
-def connect_and_authenticate(bus='SESSION'):
-    bus_addr = get_bus(bus)
-    conn = DBusConnection(bus_addr)
-    yield conn.authentication
-    conn.unique_name = (yield Proxy(message_bus, conn).Hello())[0]
-    return conn
+class _RouterContext:
+    conn = None
+    router = None
+
+    def __init__(self, bus='SESSION'):
+        self.bus = bus
+
+    async def __aenter__(self):
+        self.conn = await open_dbus_connection(self.bus)
+        self.router = DBusRouter(self.conn)
+        return self.router
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        self.router.stop()
+        self.conn.close()
+
+
+def open_dbus_router(bus='SESSION'):
+    """Open a D-Bus 'router' to send and receive messages.
+
+    Use as an async context manager::
+
+        async with open_dbus_router() as req:
+            ...
+
+    :param str bus: 'SESSION' or 'SYSTEM' or a supported address.
+    :return: :class:`DBusRouter`
+
+    This is a shortcut for::
+
+        conn = await open_dbus_connection()
+        async with conn:
+            async with conn.router() as req:
+                ...
+    """
+    return _RouterContext(bus)
+
+
+async def connect_and_authenticate(bus='SESSION'):
+    conn = await open_dbus_connection(bus)
+    return DBusRouter(conn)
+
 
 if __name__ == '__main__':
-    conn = IOLoop.current().run_sync(connect_and_authenticate)
-    print("Unique name is:", conn.unique_name)
+    rtr = IOLoop.current().run_sync(connect_and_authenticate)
+    print("Unique name is:", rtr.unique_name)
