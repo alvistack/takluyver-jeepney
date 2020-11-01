@@ -10,11 +10,11 @@ from tornado.queues import Queue, QueueFull
 
 from jeepney.auth import SASLParser, make_auth_external, BEGIN, AuthenticationError
 from jeepney.bus import get_bus
-from jeepney.low_level import Parser, MessageType, HeaderFields, Message, MessageFlag
+from jeepney.low_level import Parser, MessageType, Message, MessageFlag
 from jeepney.wrappers import ProxyBase, unwrap_msg
 from jeepney.routing import Router
 from jeepney.bus_messages import message_bus
-from .utils import MessageFilters, FilterHandle
+from .utils import MessageFilters, FilterHandle, ReplyMatcher
 
 
 class DBusConnection:
@@ -69,7 +69,7 @@ async def open_dbus_connection(bus='SESSION'):
 class DBusRouter:
     def __init__(self, conn: DBusConnection):
         self.conn = conn
-        self._reply_futures = {}
+        self._replies = ReplyMatcher()
         self._filters = MessageFilters()
         self._stop_receiving = Event()
         IOLoop.current().add_callback(self._receiver)
@@ -87,13 +87,10 @@ class DBusRouter:
             raise RuntimeError("This DBusRouter has been stopped")
 
         serial = next(self.conn.outgoing_serial)
-        self._reply_futures[serial] = reply_fut = Future()
 
-        try:
+        with self._replies.catch(serial, Future()) as reply_fut:
             await self.send(message, serial=serial)
             return (await reply_fut)
-        finally:
-            del self._reply_futures[serial]
 
     def filter(self, rule, queue: Optional[Queue] =None):
         return FilterHandle(self._filters, rule, queue)
@@ -128,14 +125,8 @@ class DBusRouter:
 
     def _dispatch(self, msg: Message):
         """Handle one received message"""
-        msg_type = msg.header.message_type
-
-        if msg_type in (MessageType.method_return, MessageType.error):
-            rep_serial = msg.header.fields.get(HeaderFields.reply_serial, -1)
-            fut = self._reply_futures.get(rep_serial, None)
-            if fut is not None:
-                fut.set_result(msg)
-                return
+        if self._replies.dispatch(msg):
+            return
 
         for filter in self._filters.matches(msg):
             try:
@@ -156,9 +147,7 @@ class DBusRouter:
         finally:
             self.is_running = False
             # Send errors to any tasks still waiting for a message.
-            futures, self._reply_futures = self._reply_futures, {}
-            for fut in futures.values():
-                fut.set_exception(NoReplyError("Reply receiver stopped"))
+            self._replies.drop_all(NoReplyError("Reply receiver stopped"))
 
 
 class NoReplyError(Exception):

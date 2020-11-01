@@ -16,7 +16,7 @@ from jeepney.bus import get_bus
 from jeepney.bus_messages import message_bus
 from jeepney.wrappers import ProxyBase, unwrap_msg
 from .blocking import unwrap_read
-from .utils import MessageFilters, FilterHandle
+from .utils import MessageFilters, FilterHandle, ReplyMatcher
 
 
 class ReceiveStopped(Exception):
@@ -133,20 +133,17 @@ def open_dbus_connection(bus='SESSION'):
 class DBusRouter:
     def __init__(self, conn: DBusConnection):
         self.conn = conn
-        self._reply_futures = {}
+        self._replies = ReplyMatcher()
         self._filters = MessageFilters()
         self._rcv_thread = Thread(target=self._receiver, daemon=True)
         self._rcv_thread.start()
 
     def send_and_get_reply(self, msg: Message, timeout=None):
         serial = next(self.conn.outgoing_serial)
-        self._reply_futures[serial] = reply_fut = Future()
 
-        try:
+        with self._replies.catch(serial, Future()) as reply_fut:
             self.conn.send(msg, serial=serial)
             return reply_fut.result(timeout=timeout)
-        finally:
-            del self._reply_futures[serial]
 
     def stop(self):
         self.conn.interrupt()
@@ -166,12 +163,8 @@ class DBusRouter:
     # Code to run in receiver thread ------------------------------------
 
     def _dispatch(self, msg: Message):
-        if msg.header.message_type in (MessageType.method_return, MessageType.error):
-            rep_serial = msg.header.fields.get(HeaderFields.reply_serial, -1)
-            fut = self._reply_futures.get(rep_serial, None)
-            if fut is not None:
-                fut.set_result(msg)
-                return
+        if self._replies.dispatch(msg):
+            return
 
         for filter in self._filters.matches(msg):
             try:
