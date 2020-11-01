@@ -66,13 +66,9 @@ async def open_dbus_connection(bus='SESSION'):
 
     # Say *Hello* to the message bus - this must be the first message, and the
     # reply gives us our unique name.
-    s = next(conn.outgoing_serial)
-    await conn.send(message_bus.Hello(), serial=s)
-    while True:
-        reply = await conn.receive()
-        if reply.header.fields.get(HeaderFields.reply_serial, -1) == s:
-            conn.unique_name = reply.body[0]
-            break
+    async with DBusRouter(conn) as router:
+        reply_body = await asyncio.wait_for(Proxy(message_bus, router).Hello(), 10)
+        conn.unique_name = reply_body[0]
 
     return conn
 
