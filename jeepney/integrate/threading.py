@@ -8,6 +8,7 @@ import socket
 import queue
 from threading import Lock, Thread
 import time
+from typing import Optional
 
 from jeepney import HeaderFields, Message, MessageType, Parser
 from jeepney.auth import AuthenticationError, BEGIN, make_auth_external, SASLParser
@@ -15,6 +16,7 @@ from jeepney.bus import get_bus
 from jeepney.bus_messages import message_bus
 from jeepney.wrappers import ProxyBase, unwrap_msg
 from .blocking import unwrap_read
+from .utils import MessageFilters, FilterHandle
 
 
 class ReceiveStopped(Exception):
@@ -132,8 +134,7 @@ class DBusRouter:
     def __init__(self, conn: DBusConnection):
         self.conn = conn
         self._reply_futures = {}
-        self._filters = {}
-        self._filter_ids = count()
+        self._filters = MessageFilters()
         self._rcv_thread = Thread(target=self._receiver, daemon=True)
         self._rcv_thread.start()
 
@@ -159,13 +160,8 @@ class DBusRouter:
         self.stop()
         return False
 
-    def add_filter(self, rule, channel: queue.Queue):
-        fid = next(self._filter_ids)
-        self._filters[fid] = (rule, channel)
-        return fid
-
-    def remove_filter(self, filter_id) -> queue.Queue:
-        return self._filters.pop(filter_id)[1]
+    def filter(self, rule, q: Optional[queue.Queue] =None):
+        return FilterHandle(self._filters, rule, q or queue.Queue(maxsize=1))
 
     # Code to run in receiver thread ------------------------------------
 

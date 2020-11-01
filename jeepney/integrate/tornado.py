@@ -1,6 +1,8 @@
 from asyncio import as_completed, Future, wait_for
 from itertools import count
 import socket
+from typing import Optional
+
 from tornado.ioloop import IOLoop
 from tornado.iostream import IOStream
 from tornado.locks import Event
@@ -12,6 +14,7 @@ from jeepney.low_level import Parser, MessageType, HeaderFields, Message, Messag
 from jeepney.wrappers import ProxyBase, unwrap_msg
 from jeepney.routing import Router
 from jeepney.bus_messages import message_bus
+from .utils import MessageFilters, FilterHandle
 
 
 class DBusConnection2:
@@ -67,8 +70,7 @@ class DBusRouter:
     def __init__(self, conn: DBusConnection2):
         self.conn = conn
         self._reply_futures = {}
-        self._filters = {}
-        self._filter_ids = count()
+        self._filters = MessageFilters()
         self._stop_receiving = Event()
         IOLoop.current().add_callback(self._receiver)
 
@@ -93,13 +95,8 @@ class DBusRouter:
         finally:
             del self._reply_futures[serial]
 
-    def add_filter(self, rule, channel: Queue):
-        fid = next(self._filter_ids)
-        self._filters[fid] = (rule, channel)
-        return fid
-
-    def remove_filter(self, filter_id):
-        return self._filter_ids.pop(filter_id)[1]
+    def filter(self, rule, queue: Optional[Queue] =None):
+        return FilterHandle(self._filters, rule, queue)
 
     def stop(self):
         self._stop_receiving.set()
@@ -140,12 +137,11 @@ class DBusRouter:
                 fut.set_result(msg)
                 return
 
-        for rule, q in self._filters.values():
-            if rule.matches(msg):
-                try:
-                    q.put_nowait(msg)
-                except QueueFull:
-                    pass
+        for filter in self._filters.matches(msg):
+            try:
+                filter.queue.put_nowait(msg)
+            except QueueFull:
+                pass
 
     async def _receiver(self):
         """Receiver loop - runs in a separate task"""

@@ -4,13 +4,14 @@ from math import inf
 
 from outcome import Value, Error
 import trio
-from trio.abc import Channel, SendChannel
+from trio.abc import Channel
 
 from jeepney.auth import SASLParser, make_auth_external, BEGIN, AuthenticationError
 from jeepney.bus import get_bus
 from jeepney.low_level import Parser, MessageType, Message, HeaderFields
 from jeepney.wrappers import ProxyBase, unwrap_msg
 from jeepney.bus_messages import message_bus
+from .utils import MessageFilters, FilterHandle
 
 log = logging.getLogger(__name__)
 
@@ -107,16 +108,21 @@ async def open_dbus_connection(bus='SESSION') -> DBusConnection:
     return conn
 
 
-class DummySendChannel(SendChannel):
-    """A send channel that accepts & discards messages"""
-    async def send(self, value):
-        pass
+class TrioFilterHandle(FilterHandle):
+    def __init__(self, filters: MessageFilters, rule, send_chn, recv_chn):
+        super().__init__(filters, rule, recv_chn)
+        self.send_channel = send_chn
 
-    async def send_nowait(self, value):
-        pass
+    @property
+    def receive_channel(self):
+        return self.queue
 
-    async def aclose(self):
-        pass
+    async def __aenter__(self):
+        return self.queue
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        self.close()
+        await self.send_channel.aclose()
 
 
 class Future:
@@ -152,8 +158,11 @@ class DBusRouter:
         self._conn = conn
         self._reply_futures = {}
         self._to_send, self._to_be_sent = trio.open_memory_channel(0)
-        self._filters = {}
-        self._filter_ids = count()
+        self._filters = MessageFilters()
+
+    @property
+    def unique_name(self):
+        return self._conn.unique_name
 
     async def send(self, message, *, serial=None):
         """Send a message, don't wait for a reply
@@ -185,20 +194,16 @@ class DBusRouter:
         finally:
             del self._reply_futures[serial]
 
-    def add_filter(self, rule, channel: trio.MemorySendChannel):
+    def filter(self, rule, channel=None):
         """Create a filter for incoming messages
 
         :param jeepney.MatchRule rule: Catch messages matching this rule
         :param trio.MemorySendChannel channel: Send matching messages here
         :return: A filter ID to use with :meth:`remove_filter`
         """
-        fid = next(self._filter_ids)
-        self._filters[fid] = (rule, channel)
-        return fid
-
-    def remove_filter(self, filter_id) -> trio.MemorySendChannel:
-        """Remove a previously added filter"""
-        return self._filter_ids.pop(filter_id)[1]
+        if channel is None:
+            channel = trio.open_memory_channel(1)
+        return TrioFilterHandle(self._filters, rule, *channel)
 
     # Task management -------------------------------------------
 
@@ -268,12 +273,11 @@ class DBusRouter:
                 fut.set_result(msg)
                 return
 
-        for rule, chan in self._filters.values():
-            if rule.matches(msg):
-                try:
-                    chan.send_nowait(msg)
-                except trio.WouldBlock:
-                    pass
+        for filter in self._filters.matches(msg):
+            try:
+                filter.send_channel.send_nowait(msg)
+            except trio.WouldBlock:
+                pass
 
     async def _receiver(self, task_status=trio.TASK_STATUS_IGNORED):
         """Receiver loop - runs in a separate task"""
@@ -294,9 +298,9 @@ class DBusRouter:
                 # Closing a memory channel can't block, but it only has an
                 # async close method, so we need to shield it from cancellation.
                 with trio.move_on_after(3) as cleanup_scope:
-                    for _, chan in self._filters.values():
+                    for filter in self._filters.filters.values():
                         cleanup_scope.shield = True
-                        await chan.aclose()
+                        await filter.send_channel.aclose()
 
 
 class NoReplyError(Exception):

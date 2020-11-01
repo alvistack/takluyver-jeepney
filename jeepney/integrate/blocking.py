@@ -8,6 +8,7 @@ import os
 from selectors import DefaultSelector, EVENT_READ
 import socket
 import time
+from typing import Optional
 
 from jeepney import Parser, Message, MessageType, HeaderFields
 from jeepney.auth import SASLParser, make_auth_external, BEGIN, AuthenticationError
@@ -15,6 +16,7 @@ from jeepney.bus import get_bus
 from jeepney.wrappers import ProxyBase, unwrap_msg
 from jeepney.routing import Router
 from jeepney.bus_messages import message_bus
+from .utils import MessageFilters, FilterHandle
 
 
 class _Future:
@@ -46,9 +48,8 @@ class DBusConnection:
         self.select_key = self.selector.register(sock, EVENT_READ)
 
         # Message routing machinery
-        self.router = Router(_Future)
-        self._filters = {}
-        self._filter_ids = count()
+        self.router = Router(_Future)  # Old interface, for backwards compat
+        self._filters = MessageFilters()
 
         # Say Hello, get our unique name
         self.bus_proxy = Proxy(message_bus, self)
@@ -104,13 +105,12 @@ class DBusConnection:
     def recv_messages(self, timeout=None):
         """Receive one message and apply filters
 
-        See :meth:`add_filter`. Returns nothing.
+        See :meth:`filter`. Returns nothing.
         """
         msg = self.receive(timeout=timeout)
         self.router.incoming(msg)
-        for rule, chan in self._filters.values():
-            if rule.matches(msg):
-                chan.append(msg)
+        for filter in self._filters.matches(msg):
+            filter.queue.append(msg)
 
     def send_and_get_reply(self, message, timeout=None, unwrap=True):
         """Send a message, wait for the reply and return it
@@ -137,24 +137,17 @@ class DBusConnection:
 
             # Not the reply
             self.router.incoming(msg_in)
-            for rule, chan in self._filters.values():
-                if rule.matches(msg_in):
-                    chan.append(msg_in)
+            for filter in self._filters.matches(msg_in):
+                filter.queue.append(msg_in)
 
-    def add_filter(self, rule, channel: deque):
+    def filter(self, rule, channel: Optional[deque] =None):
         """Create a filter for incoming messages
 
         :param jeepney.MatchRule rule: Catch messages matching this rule
         :param collections.deque channel: Matched messages will be added to this
         :return: A filter ID to use with :meth:`remove_filter`
         """
-        fid = next(self._filter_ids)
-        self._filters[fid] = (rule, channel)
-        return fid
-
-    def remove_filter(self, filter_id) -> deque:
-        """Remove a previously added filter"""
-        return self._filters.pop(filter_id)[1]
+        return FilterHandle(self._filters, rule, channel or deque(maxlen=1))
 
     def close(self):
         """Close this connection"""

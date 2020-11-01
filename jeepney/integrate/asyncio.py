@@ -1,5 +1,6 @@
 import asyncio
 from itertools import count
+from typing import Optional
 
 from jeepney.auth import SASLParser, make_auth_external, BEGIN, AuthenticationError
 from jeepney.bus import get_bus
@@ -7,6 +8,7 @@ from jeepney import HeaderFields, Message, MessageType, Parser
 from jeepney.wrappers import ProxyBase, unwrap_msg
 from jeepney.routing import Router
 from jeepney.bus_messages import message_bus
+from .utils import MessageFilters, FilterHandle
 
 
 class DBusConnection:
@@ -100,8 +102,7 @@ class DBusRouter:
     def __init__(self, conn: DBusConnection):
         self._conn = conn
         self._reply_futures = {}
-        self._filters = {}
-        self._filter_ids = count()
+        self._filters = MessageFilters()
         self._rcv_task = asyncio.create_task(self._receiver())
 
     async def send(self, message, *, serial=None):
@@ -127,20 +128,14 @@ class DBusRouter:
         finally:
             del self._reply_futures[serial]
 
-    def add_filter(self, rule, channel: asyncio.Queue):
+    def filter(self, rule, queue: Optional[asyncio.Queue] =None):
         """Create a filter for incoming messages
 
         :param MatchRule rule: Catch messages matching this rule
-        :param asyncio.Queue channel: Send matching messages here
+        :param asyncio.Queue queue: Send matching messages here
         :return: A filter ID to use with :meth:`remove_filter`
         """
-        fid = next(self._filter_ids)
-        self._filters[fid] = (rule, channel)
-        return fid
-
-    def remove_filter(self, filter_id):
-        """Remove a previously added filter"""
-        return self._filter_ids.pop(filter_id)[1]
+        return FilterHandle(self._filters, rule, queue or asyncio.Queue(1))
 
     async def __aenter__(self):
         return self
@@ -162,12 +157,11 @@ class DBusRouter:
                 fut.set_result(msg)
                 return
 
-        for rule, q in self._filters.values():
-            if rule.matches(msg):
-                try:
-                    q.put_nowait(msg)
-                except asyncio.QueueFull:
-                    pass
+        for rule, q in self._filters.matches(msg):
+            try:
+                q.put_nowait(msg)
+            except asyncio.QueueFull:
+                pass
 
     async def _receiver(self):
         """Receiver loop - runs in a separate task"""
