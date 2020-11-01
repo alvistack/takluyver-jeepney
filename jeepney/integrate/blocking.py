@@ -165,7 +165,7 @@ class Proxy(ProxyBase):
     """A blocking proxy for calling D-Bus methods
 
     :param msggen: A message generator object.
-    :param DBusConnection connection: Connection to send and receive messages.
+    :param ~blocking.DBusConnection connection: Connection to send and receive messages.
     :param float timeout: Seconds to wait for a reply, or None for no limit.
     """
     def __init__(self, msggen, connection, timeout=None):

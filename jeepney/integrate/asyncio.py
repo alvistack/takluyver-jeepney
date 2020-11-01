@@ -10,6 +10,13 @@ from jeepney.bus_messages import message_bus
 
 
 class DBusConnection:
+    """A plain D-Bus connection with no matching of replies.
+
+    This doesn't run any separate tasks: sending and receiving are done in
+    the task that calls those methods. It's suitable for implementing servers:
+    several worker tasks can receive requests and send replies.
+    For a typical client pattern, see :class:`DBusRouter`.
+    """
     def __init__(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
         self.reader = reader
         self.writer = writer
@@ -19,6 +26,7 @@ class DBusConnection:
         self.send_lock = asyncio.Lock()
 
     async def send(self, message: Message, *, serial=None):
+        """Serialise and send a :class:`~.Message` object"""
         async with self.send_lock:
             if serial is None:
                 serial = next(self.outgoing_serial)
@@ -26,6 +34,7 @@ class DBusConnection:
             await self.writer.drain()
 
     async def receive(self) -> Message:
+        """Return the next available message from the connection"""
         while True:
             msg = self.parser.get_next_message()
             if msg is not None:
@@ -37,11 +46,16 @@ class DBusConnection:
             self.parser.add_data(b)
 
     async def close(self):
+        """Close the D-Bus connection"""
         self.writer.close()
         await self.writer.wait_closed()
 
 
 async def open_dbus_connection(bus='SESSION'):
+    """Open a plain D-Bus connection
+
+    :return: :class:`DBusConnection`
+    """
     bus_addr = get_bus(bus)
     reader, writer = await asyncio.open_unix_connection(bus_addr)
 
@@ -91,6 +105,7 @@ class DBusRouter:
         self._rcv_task = asyncio.create_task(self._receiver())
 
     async def send(self, message, *, serial=None):
+        """Send a message, don't wait for a reply"""
         await self._conn.send(message, serial=serial)
 
     async def send_and_get_reply(self, message) -> Message:
@@ -113,11 +128,18 @@ class DBusRouter:
             del self._reply_futures[serial]
 
     def add_filter(self, rule, channel: asyncio.Queue):
+        """Create a filter for incoming messages
+
+        :param MatchRule rule: Catch messages matching this rule
+        :param asyncio.Queue channel: Send matching messages here
+        :return: A filter ID to use with :meth:`remove_filter`
+        """
         fid = next(self._filter_ids)
         self._filters[fid] = (rule, channel)
         return fid
 
     def remove_filter(self, filter_id):
+        """Remove a previously added filter"""
         return self._filter_ids.pop(filter_id)[1]
 
     async def __aenter__(self):
@@ -161,6 +183,13 @@ class DBusRouter:
                 fut.set_exception(NoReplyError("Reply receiver stopped"))
 
 class open_dbus_router:
+    """Open a D-Bus 'router' to send and receive messages
+
+    Use as an async context manager::
+
+        async with open_dbus_router() as router:
+            ...
+    """
     conn = None
     req_ctx = None
 
@@ -226,6 +255,11 @@ class DBusProtocol(asyncio.Protocol):
         return await self.send_message(message)
 
 class Proxy(ProxyBase):
+    """An asyncio proxy for calling D-Bus methods
+
+    :param msggen: A message generator object.
+    :param ~asyncio.DBusRouter router: Router to send and receive messages.
+    """
     def __init__(self, msggen, router):
         super().__init__(msggen)
         self._router = router

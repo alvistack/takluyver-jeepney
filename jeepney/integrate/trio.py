@@ -307,7 +307,7 @@ class Proxy(ProxyBase):
     """A trio proxy for calling D-Bus methods
 
     :param msggen: A message generator object.
-    :param DBusRouter router: Router to send and receive messages.
+    :param ~trio.DBusRouter router: Router to send and receive messages.
     """
     def __init__(self, msggen, router):
         super().__init__(msggen)

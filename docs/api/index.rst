@@ -14,3 +14,4 @@ API reference
 
    blocking
    trio
+   asyncio
