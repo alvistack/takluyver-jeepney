@@ -173,12 +173,11 @@ class DBusRouter:
                 fut.set_result(msg)
                 return
 
-        for rule, chan in self._filters.values():
-            if rule.matches(msg):
-                try:
-                    chan.put_nowait(msg)
-                except queue.Full:
-                    pass
+        for filter in self._filters.matches(msg):
+            try:
+                filter.queue.put_nowait(msg)
+            except queue.Full:
+                pass
 
     def _receiver(self):
         try:
