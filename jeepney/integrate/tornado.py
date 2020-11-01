@@ -17,7 +17,7 @@ from jeepney.bus_messages import message_bus
 from .utils import MessageFilters, FilterHandle
 
 
-class DBusConnection2:
+class DBusConnection:
     def __init__(self, stream: IOStream):
         self.stream = stream
         self.parser = Parser()
@@ -57,7 +57,7 @@ async def open_dbus_connection(bus='SESSION'):
 
     await stream.write(BEGIN)
 
-    conn = DBusConnection2(stream)
+    conn = DBusConnection(stream)
 
     with DBusRouter(conn) as router:
         reply_body = await wait_for(Proxy(message_bus, router).Hello(), 10)
@@ -67,7 +67,7 @@ async def open_dbus_connection(bus='SESSION'):
 
 
 class DBusRouter:
-    def __init__(self, conn: DBusConnection2):
+    def __init__(self, conn: DBusConnection):
         self.conn = conn
         self._reply_futures = {}
         self._filters = MessageFilters()
