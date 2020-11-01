@@ -1,7 +1,7 @@
 import trio
 import pytest
 
-from jeepney import DBusAddress, MessageType, new_method_call
+from jeepney import DBusAddress, DBusErrorResponse, MessageType, new_method_call
 from jeepney.bus_messages import message_bus
 from jeepney.integrate.trio import (
     open_dbus_connection, open_dbus_router, Proxy,
@@ -38,6 +38,16 @@ async def test_send_and_get_reply():
     assert reply.header.message_type == MessageType.method_return
     assert reply.body == ()
 
+
+async def test_send_and_get_reply_error():
+    ping_call = new_method_call(bus_peer, 'Snart')  # No such method
+    async with open_dbus_router(bus='SESSION') as req:
+        with trio.fail_after(5):
+            reply = await req.send_and_get_reply(ping_call)
+
+    assert reply.header.message_type == MessageType.error
+
+
 async def test_proxy():
     async with open_dbus_router(bus='SESSION') as req:
         proxy = Proxy(message_bus, req)
@@ -47,3 +57,10 @@ async def test_proxy():
 
         has_owner, = await proxy.NameHasOwner(name)
         assert has_owner is True
+
+
+async def test_proxy_error():
+    async with open_dbus_router(bus='SESSION') as req:
+        proxy = Proxy(message_bus, req)
+        with pytest.raises(DBusErrorResponse):
+            await proxy.RequestName(":123")  # Invalid name

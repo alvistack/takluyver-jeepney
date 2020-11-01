@@ -9,7 +9,7 @@ from trio.abc import Channel, SendChannel
 from jeepney.auth import SASLParser, make_auth_external, BEGIN, AuthenticationError
 from jeepney.bus import get_bus
 from jeepney.low_level import Parser, MessageType, Message, HeaderFields
-from jeepney.wrappers import ProxyBase, DBusErrorResponse
+from jeepney.wrappers import ProxyBase, unwrap_msg
 from jeepney.bus_messages import message_bus
 
 log = logging.getLogger(__name__)
@@ -265,10 +265,7 @@ class DBusRouter:
             rep_serial = msg.header.fields.get(HeaderFields.reply_serial, -1)
             fut = self._reply_futures.get(rep_serial, None)
             if fut is not None:
-                if msg_type is MessageType.method_return:
-                    fut.set_result(msg)
-                else:
-                    fut.set_exception(DBusErrorResponse(msg))
+                fut.set_result(msg)
                 return
 
         for rule, chan in self._filters.values():
@@ -322,7 +319,8 @@ class Proxy(ProxyBase):
         async def inner(*args, **kwargs):
             msg = make_msg(*args, **kwargs)
             assert msg.header.message_type is MessageType.method_call
-            return (await self._router.send_and_get_reply(msg)).body
+            reply = await self._router.send_and_get_reply(msg)
+            return unwrap_msg(reply)
 
         return inner
 
