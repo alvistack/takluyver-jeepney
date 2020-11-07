@@ -1,6 +1,7 @@
 from itertools import count
 import logging
 from math import inf
+from typing import Optional
 
 from outcome import Value, Error
 import trio
@@ -117,12 +118,15 @@ class TrioFilterHandle(FilterHandle):
     def receive_channel(self):
         return self.queue
 
+    async def aclose(self):
+        self.close()
+        await self.send_channel.aclose()
+
     async def __aenter__(self):
         return self.queue
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
-        self.close()
-        await self.send_channel.aclose()
+        await self.aclose()
 
 
 class Future:
@@ -191,16 +195,32 @@ class DBusRouter:
             await self.send(message, serial=serial)
             return (await reply_fut.get())
 
-    def filter(self, rule, channel=None):
+    def filter(self, rule, *, channel: Optional[trio.MemorySendChannel]=None, bufsize=1):
         """Create a filter for incoming messages
+
+        Usage::
+
+            async with router.filter(rule) as receive_channel:
+                matching_msg = await receive_channel.receive()
+
+            # OR:
+            send_chan, recv_chan = trio.open_memory_channel(1)
+            async with router.filter(rule, channel=send_chan):
+                matching_msg = await recv_chan.receive()
+
+        If the channel fills up,
+        The sending end of the channel is closed when leaving the ``async with``
+        block, whether or not it was passed in.
 
         :param jeepney.MatchRule rule: Catch messages matching this rule
         :param trio.MemorySendChannel channel: Send matching messages here
-        :return: A filter ID to use with :meth:`remove_filter`
+        :param int bufsize: If no channel is passed in, create one with this size
         """
         if channel is None:
-            channel = trio.open_memory_channel(1)
-        return TrioFilterHandle(self._filters, rule, *channel)
+            channel, recv_channel = trio.open_memory_channel(bufsize)
+        else:
+            recv_channel = None
+        return TrioFilterHandle(self._filters, rule, channel, recv_channel)
 
     # Task management -------------------------------------------
 

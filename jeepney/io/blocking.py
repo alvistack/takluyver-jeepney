@@ -144,14 +144,22 @@ class DBusConnection:
             for filter in self._filters.matches(msg_in):
                 filter.queue.append(msg_in)
 
-    def filter(self, rule, channel: Optional[deque] =None):
+    def filter(self, rule, *, queue: Optional[deque] =None, bufsize=1):
         """Create a filter for incoming messages
 
+        Usage::
+
+            with conn.filter(rule) as matches:
+                # matches is a deque containing matched messages
+                while len(matches) == 0:
+                    conn.recv_messages()
+                matching_msg = matches.popleft()
+
         :param jeepney.MatchRule rule: Catch messages matching this rule
-        :param collections.deque channel: Matched messages will be added to this
-        :return: A filter ID to use with :meth:`remove_filter`
+        :param collections.deque queue: Matched messages will be added to this
+        :param int bufsize: If no deque is passed in, create one with this size
         """
-        return FilterHandle(self._filters, rule, channel or deque(maxlen=1))
+        return FilterHandle(self._filters, rule, queue or deque(maxlen=bufsize))
 
     def close(self):
         """Close this connection"""

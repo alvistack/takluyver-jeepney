@@ -92,8 +92,19 @@ class DBusRouter:
             await self.send(message, serial=serial)
             return (await reply_fut)
 
-    def filter(self, rule, queue: Optional[Queue] =None):
-        return FilterHandle(self._filters, rule, queue)
+    def filter(self, rule, *, queue: Optional[Queue] =None, bufsize=1):
+        """Create a filter for incoming messages
+
+        Usage::
+
+            with router.filter(rule) as queue:
+                matching_msg = await queue.get()
+
+        :param jeepney.MatchRule rule: Catch messages matching this rule
+        :param tornado.queues.Queue queue: Matched messages will be added to this
+        :param int bufsize: If no queue is passed in, create one with this size
+        """
+        return FilterHandle(self._filters, rule, queue or Queue(bufsize))
 
     def stop(self):
         self._stop_receiving.set()

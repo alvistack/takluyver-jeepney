@@ -124,14 +124,19 @@ class DBusRouter:
             await self.send(message, serial=serial)
             return (await reply_fut)
 
-    def filter(self, rule, queue: Optional[asyncio.Queue] =None):
+    def filter(self, rule, *, queue: Optional[asyncio.Queue] =None, bufsize=1):
         """Create a filter for incoming messages
+
+        Usage::
+
+            with router.filter(rule) as queue:
+                matching_msg = await queue.get()
 
         :param MatchRule rule: Catch messages matching this rule
         :param asyncio.Queue queue: Send matching messages here
-        :return: A filter ID to use with :meth:`remove_filter`
+        :param int bufsize: If no queue is passed in, create one with this size
         """
-        return FilterHandle(self._filters, rule, queue or asyncio.Queue(1))
+        return FilterHandle(self._filters, rule, queue or asyncio.Queue(bufsize))
 
     async def __aenter__(self):
         return self

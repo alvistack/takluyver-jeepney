@@ -5,7 +5,7 @@ from itertools import count
 import os
 from selectors import DefaultSelector, EVENT_READ
 import socket
-import queue
+from queue import Queue, Full as QueueFull
 from threading import Lock, Thread
 import time
 from typing import Optional
@@ -157,8 +157,19 @@ class DBusRouter:
         self.stop()
         return False
 
-    def filter(self, rule, q: Optional[queue.Queue] =None):
-        return FilterHandle(self._filters, rule, q or queue.Queue(maxsize=1))
+    def filter(self, rule, *, queue: Optional[Queue] =None, bufsize=1):
+        """Create a filter for incoming messages
+
+        Usage::
+
+            with router.filter(rule) as queue:
+                matching_msg = queue.get()
+
+        :param jeepney.MatchRule rule: Catch messages matching this rule
+        :param queue.Queue queue: Matched messages will be added to this
+        :param int bufsize: If no queue is passed in, create one with this size
+        """
+        return FilterHandle(self._filters, rule, queue or Queue(maxsize=bufsize))
 
     # Code to run in receiver thread ------------------------------------
 
@@ -169,7 +180,7 @@ class DBusRouter:
         for filter in self._filters.matches(msg):
             try:
                 filter.queue.put_nowait(msg)
-            except queue.Full:
+            except QueueFull:
                 pass
 
     def _receiver(self):
