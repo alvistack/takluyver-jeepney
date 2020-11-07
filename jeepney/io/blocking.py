@@ -46,6 +46,7 @@ class DBusConnection:
         self.outgoing_serial = count(start=1)
         self.selector = DefaultSelector()
         self.select_key = self.selector.register(sock, EVENT_READ)
+        self._unwrap_reply = False
 
         # Message routing machinery
         self.router = Router(_Future)  # Old interface, for backwards compat
@@ -112,7 +113,7 @@ class DBusConnection:
         for filter in self._filters.matches(msg):
             filter.queue.append(msg)
 
-    def send_and_get_reply(self, message, timeout=None, unwrap=True):
+    def send_and_get_reply(self, message, timeout=None, unwrap=None):
         """Send a message, wait for the reply and return it
 
         Filters are applied to other messages received before the reply -
@@ -122,6 +123,9 @@ class DBusConnection:
             deadline = time.monotonic() + timeout
         else:
             deadline = None
+
+        if unwrap is None:
+            unwrap = self._unwrap_reply
 
         serial = next(self.outgoing_serial)
         self.send_message(message, serial=serial)
@@ -175,7 +179,9 @@ class Proxy(ProxyBase):
         def inner(*args, **kwargs):
             msg = make_msg(*args, **kwargs)
             assert msg.header.message_type is MessageType.method_call
-            return self._connection.send_and_get_reply(msg, timeout=self._timeout)
+            return self._connection.send_and_get_reply(
+                msg, timeout=self._timeout, unwrap=True
+            )
 
         return inner
 
@@ -191,7 +197,7 @@ def unwrap_read(b):
     return b
 
 
-def connect_and_authenticate(bus='SESSION') -> DBusConnection:
+def open_dbus_connection(bus='SESSION') -> DBusConnection:
     """Connect to a D-Bus message bus"""
     bus_addr = get_bus(bus)
     sock = socket.socket(family=socket.AF_UNIX)
@@ -209,8 +215,7 @@ def connect_and_authenticate(bus='SESSION') -> DBusConnection:
     conn.parser.buf = auth_parser.buffer
     return conn
 
-open_dbus_connection = connect_and_authenticate
 
 if __name__ == '__main__':
-    conn = connect_and_authenticate()
+    conn = open_dbus_connection()
     print("Unique name:", conn.unique_name)
