@@ -5,7 +5,7 @@ See also aio_notify_noproxy.py, which does the same with lower-level APIs
 import asyncio
 
 from jeepney import MessageGenerator, new_method_call
-from jeepney.integrate.asyncio import open_dbus_router, Proxy
+from jeepney.io.asyncio import open_dbus_router, Proxy
 
 # ---- Message generator, created by jeepney.bindgen ----
 class Notifications(MessageGenerator):

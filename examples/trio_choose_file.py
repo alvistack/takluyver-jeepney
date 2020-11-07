@@ -2,7 +2,7 @@ import trio
 
 from jeepney import DBusAddress, new_method_call
 from jeepney.bus_messages import message_bus, MatchRule
-from jeepney.integrate.trio import open_dbus_router, Proxy
+from jeepney.io.trio import open_dbus_router, Proxy
 
 portal = DBusAddress(
     object_path='/org/freedesktop/portal/desktop',

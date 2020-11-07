@@ -5,7 +5,7 @@ sys.excepthook =  sys.__excepthook__
 import trio
 
 from jeepney import MessageGenerator, new_method_call
-from jeepney.integrate.trio import open_dbus_router, Proxy
+from jeepney.io.trio import open_dbus_router, Proxy
 
 # ---- Message generator, created by jeepney.bindgen ----
 class Notifications(MessageGenerator):

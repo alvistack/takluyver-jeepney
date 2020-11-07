@@ -1,6 +1,6 @@
 import asyncio
 
-from jeepney.integrate.asyncio import open_dbus_connection
+from jeepney.io.asyncio import open_dbus_connection
 
 async def hello():
     conn = await open_dbus_connection(bus='SESSION')

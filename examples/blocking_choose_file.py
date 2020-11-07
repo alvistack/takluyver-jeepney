@@ -1,6 +1,6 @@
 from jeepney import DBusAddress, new_method_call
 from jeepney.bus_messages import message_bus, MatchRule
-from jeepney.integrate.blocking import open_dbus_connection, Proxy
+from jeepney.io.blocking import open_dbus_connection, Proxy
 
 portal = DBusAddress(
     object_path='/org/freedesktop/portal/desktop',

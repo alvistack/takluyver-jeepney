@@ -19,7 +19,7 @@ Client 2
 
 import asyncio
 
-from jeepney.integrate.asyncio import open_dbus_router, Proxy
+from jeepney.io.asyncio import open_dbus_router, Proxy
 from jeepney.bus_messages import message_bus, MatchRule
 
 well_known_bus_name = "io.readthedocs.jeepney.aio_subscribe_example"
@@ -38,19 +38,18 @@ async def watcher(ready: asyncio.Event):
     match_rule.add_arg_condition(0, well_known_bus_name)
 
     async with open_dbus_router() as router:
-        q = asyncio.Queue()
-        router.add_filter(match_rule, q)
         await Proxy(message_bus, router).AddMatch(match_rule)
 
-        print("[watcher] subscribed to NameOwnerChanged signal")
-        ready.set()
+        with router.filter(match_rule) as q:
+            print("[watcher] subscribed to NameOwnerChanged signal")
+            ready.set()
 
-        msg = await q.get()
-        print("[watcher] match hit:", msg.body)
+            msg = await q.get()
+            print("[watcher] match hit:", msg.body)
 
 async def main():
     watcher_ready = asyncio.Event()
-    asyncio.create_task(watcher(watcher_ready))
+    watcher_task = asyncio.create_task(watcher(watcher_ready))
     await watcher_ready.wait()
 
     async with open_dbus_router() as router:
@@ -59,7 +58,7 @@ async def main():
         print("[service] reply:", (None, "primary owner", "in queue",
                                    "exists", "already owned")[resp[0]])
 
-    await asyncio.sleep(1)
+    await watcher_task
 
 if __name__ == "__main__":
     asyncio.run(main())

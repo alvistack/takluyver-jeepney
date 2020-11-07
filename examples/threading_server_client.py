@@ -6,7 +6,7 @@ import random
 from threading import Thread
 
 from jeepney import DBusAddress, new_method_call
-from jeepney.integrate.threading import open_dbus_router
+from jeepney.io.threading import open_dbus_router
 
 server = DBusAddress(
     "/io/gitlab/takluyver/jeepney/examples/Server",

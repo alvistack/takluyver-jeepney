@@ -6,7 +6,7 @@ import time
 
 from jeepney import MessageType, HeaderFields, new_method_return, new_error
 from jeepney.bus_messages import message_bus
-from jeepney.integrate.blocking import open_dbus_connection
+from jeepney.io.blocking import open_dbus_connection
 
 SERVER_NAME = "io.gitlab.takluyver.jeepney.examples.Server"
 
@@ -25,7 +25,7 @@ with open_dbus_connection() as connection:
 
     # Request an additional name on the message bus
     rep = connection.send_and_get_reply(message_bus.RequestName(SERVER_NAME))
-    if rep[0] == 1:  # DBUS_REQUEST_NAME_REPLY_PRIMARY_OWNER
+    if rep.body[0] == 1:  # DBUS_REQUEST_NAME_REPLY_PRIMARY_OWNER
         print("Got name", SERVER_NAME)
 
     while True:

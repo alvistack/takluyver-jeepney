@@ -5,7 +5,7 @@ https://freedesktop.org/wiki/Specifications/secret-storage-spec/secrets-api-0.1.
 import asyncio
 
 from jeepney import new_method_call, DBusAddress, Properties
-from jeepney.integrate.asyncio import open_dbus_router
+from jeepney.io.asyncio import open_dbus_router
 
 secrets = DBusAddress('/org/freedesktop/secrets',
                       bus_name= 'org.freedesktop.secrets',

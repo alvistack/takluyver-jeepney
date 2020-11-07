@@ -8,7 +8,7 @@ import time
 
 from jeepney import MessageType, HeaderFields, new_method_return, new_error
 from jeepney.bus_messages import message_bus
-from jeepney.integrate.threading import (
+from jeepney.io.threading import (
     open_dbus_connection, DBusRouter, Proxy, ReceiveStopped,
 )
 

@@ -1,5 +1,5 @@
 from jeepney import DBusAddress, new_method_call
-from jeepney.integrate.blocking import open_dbus_connection
+from jeepney.io.blocking import open_dbus_connection
 
 notifications = DBusAddress('/org/freedesktop/Notifications',
                             bus_name='org.freedesktop.Notifications',
@@ -21,6 +21,6 @@ msg = new_method_call(notifications, 'Notify', 'susssasa{sv}i',
 
 # Send the message and wait for the reply
 reply = connection.send_and_get_reply(msg)
-print('Notification ID:', reply[0])
+print('Notification ID:', reply.body[0])
 
 connection.close()

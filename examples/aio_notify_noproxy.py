@@ -5,7 +5,7 @@ See also aio_notify.py, which does the same with the higher-level Proxy API.
 import asyncio
 
 from jeepney import DBusAddress, new_method_call
-from jeepney.integrate.asyncio import open_dbus_router
+from jeepney.io.asyncio import open_dbus_router
 
 notifications = DBusAddress('/org/freedesktop/Notifications',
                             bus_name='org.freedesktop.Notifications',

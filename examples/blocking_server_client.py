@@ -4,7 +4,7 @@ import random
 from time import sleep
 
 from jeepney import DBusAddress, new_method_call
-from jeepney.integrate.blocking import open_dbus_connection
+from jeepney.io.blocking import open_dbus_connection
 
 server = DBusAddress(
     "/io/gitlab/takluyver/jeepney/examples/Server",
@@ -21,5 +21,5 @@ with open_dbus_connection() as connection:
 
         # Send the message and wait for the reply
         reply = connection.send_and_get_reply(msg)
-        print('Result:', reply[0])
+        print('Result:', reply.body[0])
         sleep(1)

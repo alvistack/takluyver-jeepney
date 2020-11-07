@@ -16,14 +16,14 @@ https://dbus.freedesktop.org/doc/dbus-specification.html#message-bus-routing-mat
 from collections import deque
 
 from jeepney.bus_messages import MatchRule, message_bus
-from jeepney.integrate.blocking import connect_and_authenticate, Proxy
+from jeepney.io.blocking import open_dbus_connection, Proxy
 from jeepney.wrappers import DBusAddress
 
 noti = DBusAddress('/org/freedesktop/Notifications',
                    bus_name='org.freedesktop.Notifications',
                    interface='org.freedesktop.Notifications')
 
-connection = connect_and_authenticate(bus="SESSION")
+connection = open_dbus_connection(bus="SESSION")
 
 match_rule = MatchRule(
     type="signal",
@@ -32,18 +32,17 @@ match_rule = MatchRule(
     path=noti.object_path,
 )
 
-queue = deque()
-connection.add_filter(match_rule, queue)
+
 
 # Tell the session bus to pass us matching signal messages:
 bus_proxy = Proxy(message_bus, connection)
 print("Match added?", bus_proxy.AddMatch(match_rule) == ())
 
+print("Trigger a desktop notification (e.g. with notify-send) and then close it")
 
-# Using dbus-send or d-feet or blocking_notify.py, send a notification and
-# manually close it or call ``.CloseNotification`` after a beat.
-while len(queue) == 0:
-    connection.recv_messages()
+with connection.filter(match_rule) as queue:
+    while len(queue) == 0:
+        connection.recv_messages()
 
 reasons = {1: 'expiry', 2: 'dismissal', 3: 'dbus', '4': 'undefined'}
 
