@@ -2,7 +2,7 @@ import pytest
 
 from jeepney import new_method_call, MessageType, DBusAddress
 from jeepney.bus_messages import message_bus
-from jeepney.integrate.blocking import open_dbus_connection, Proxy
+from jeepney.io.blocking import open_dbus_connection, Proxy
 from .utils import have_session_bus
 
 pytestmark = pytest.mark.skipif(

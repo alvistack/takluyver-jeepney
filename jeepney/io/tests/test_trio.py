@@ -3,7 +3,7 @@ import pytest
 
 from jeepney import DBusAddress, DBusErrorResponse, MessageType, new_method_call
 from jeepney.bus_messages import message_bus
-from jeepney.integrate.trio import (
+from jeepney.io.trio import (
     open_dbus_connection, open_dbus_router, Proxy,
 )
 from .utils import have_session_bus

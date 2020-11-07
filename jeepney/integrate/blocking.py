@@ -1,3 +1,4 @@
+"""Deprecated: use jeepney.io.blocking instead"""
 from jeepney.io.blocking import *
 
 
