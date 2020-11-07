@@ -137,6 +137,8 @@ class DBusRouter:
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
+        if self._rcv_task.done():
+            self._rcv_task.result()  # Throw exception if receive task failed
         self._rcv_task.cancel()
         return False
 
@@ -147,9 +149,9 @@ class DBusRouter:
         if self._replies.dispatch(msg):
             return
 
-        for rule, q in self._filters.matches(msg):
+        for filter in list(self._filters.matches(msg)):
             try:
-                q.put_nowait(msg)
+                filter.queue.put_nowait(msg)
             except asyncio.QueueFull:
                 pass
 
