@@ -141,7 +141,7 @@ class ProxyBase:
     """A proxy is an IO-aware wrapper around a MessageGenerator
     
     Calling methods on a proxy object will send a message and wait for the
-    reply. This is a base class for proxy implementations in jeepney.integrate.
+    reply. This is a base class for proxy implementations in jeepney.io.
     """
     def __init__(self, msggen):
         self._msggen = msggen

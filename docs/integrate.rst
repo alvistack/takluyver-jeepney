@@ -9,7 +9,7 @@ Jeepney can be used with several different frameworks:
 - `asyncio <https://docs.python.org/3/library/asyncio.html>`_
 - `Tornado <http://www.tornadoweb.org/en/stable/>`_
 
-For each of these, there is a module in ``jeepney.integrate`` providing the
+For each of these, there is a module in ``jeepney.io`` providing the
 integration layer.
 
 Here's an example of sending a desktop notification, using blocking I/O:

@@ -1,7 +1,7 @@
 Blocking I/O
 ============
 
-.. module:: jeepney.integrate.blocking
+.. module:: jeepney.io.blocking
 
 .. autofunction:: open_dbus_connection
 
@@ -15,9 +15,7 @@ Blocking I/O
 
    .. automethod:: recv_messages
 
-   .. automethod:: add_filter
-
-   .. automethod:: remove_filter
+   .. automethod:: filter
 
    .. automethod:: close
 

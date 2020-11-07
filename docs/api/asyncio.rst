@@ -1,7 +1,7 @@
 Asyncio integration
 ===================
 
-.. module:: jeepney.integrate.asyncio
+.. module:: jeepney.io.asyncio
 
 .. autofunction:: open_dbus_router
 
@@ -11,9 +11,7 @@ Asyncio integration
 
    .. automethod:: send_and_get_reply
 
-   .. automethod:: add_filter
-
-   .. automethod:: remove_filter
+   .. automethod:: filter
 
 .. autoclass:: Proxy
 
