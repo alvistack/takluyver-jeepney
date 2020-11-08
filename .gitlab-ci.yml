@@ -1,6 +1,12 @@
 before_script:
   - pip install '.[test]'
 
+test_job_py39:
+  image: python:3.9
+  script:
+    - pytest
+  stage: test
+
 test_job_py38:
   image: python:3.8
   script:
