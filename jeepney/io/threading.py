@@ -226,9 +226,15 @@ class Proxy(ProxyBase):
     return a tuple of returned data, or raise :exc:`.DBusErrorResponse`.
     The methods available are defined by the message generator you wrap.
 
+    You can set a time limit on a call by passing ``_timeout=`` in the method
+    call, or set a default when creating the proxy. The ``_timeout`` argument
+    is not passed to the message generator.
+    All timeouts are in seconds, and :exc:`TimeoutErrror` is raised if it
+    expires before a reply arrives.
+
     :param msggen: A message generator object
     :param ~threading.DBusRouter router: Router to send and receive messages
-    :param float timeout: Seconds to wait for a reply, or None for no limit
+    :param float timeout: Default seconds to wait for a reply, or None for no limit
     """
     def __init__(self, msggen, router, *, timeout=None):
         super().__init__(msggen)
@@ -242,9 +248,10 @@ class Proxy(ProxyBase):
     def _method_call(self, make_msg):
         @functools.wraps(make_msg)
         def inner(*args, **kwargs):
+            timeout = kwargs.pop('_timeout', self._timeout)
             msg = make_msg(*args, **kwargs)
             assert msg.header.message_type is MessageType.method_call
-            reply = self._router.send_and_get_reply(msg, timeout=self._timeout)
+            reply = self._router.send_and_get_reply(msg, timeout=timeout)
             return unwrap_msg(reply)
 
         return inner

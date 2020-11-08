@@ -36,7 +36,7 @@ def test_proxy(router):
     res = proxy.RequestName(name)
     assert res in {(1,), (2,)}  # 1: got the name, 2: queued
 
-    has_owner, = proxy.NameHasOwner(name)
+    has_owner, = proxy.NameHasOwner(name, _timeout=3)
     assert has_owner is True
 
 def test_filter(router):
