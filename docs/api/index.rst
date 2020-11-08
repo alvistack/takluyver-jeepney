@@ -16,3 +16,4 @@ API reference
    threading
    trio
    asyncio
+   io_exceptions

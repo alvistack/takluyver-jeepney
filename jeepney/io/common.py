@@ -60,8 +60,20 @@ class ReplyMatcher:
         else:
             return False
 
-    def drop_all(self, exc: Exception):
+    def drop_all(self, exc: Exception = None):
         """Throw an error in any task still waiting for a reply"""
+        if exc is None:
+            exc = RouterClosed("D-Bus router closed before reply arrived")
         futures, self._futures = self._futures, {}
         for fut in futures.values():
             fut.set_exception(exc)
+
+
+class RouterClosed(Exception):
+    """Raised in tasks waiting for a reply when the router is closed
+
+    This will also be raised if the receiver task crashes, so tasks are not
+    stuck waiting for a reply that can never come. The router object will not
+    be usable after this is raised.
+    """
+    pass

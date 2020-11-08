@@ -12,7 +12,7 @@ from jeepney.bus import get_bus
 from jeepney.low_level import Parser, MessageType, Message
 from jeepney.wrappers import ProxyBase, unwrap_msg
 from jeepney.bus_messages import message_bus
-from .utils import MessageFilters, FilterHandle, ReplyMatcher
+from .common import MessageFilters, FilterHandle, ReplyMatcher
 
 log = logging.getLogger(__name__)
 
@@ -302,7 +302,7 @@ class DBusRouter:
             finally:
                 self.is_running = False
                 # Send errors to any tasks still waiting for a message.
-                self._replies.drop_all(NoReplyError("Reply receiver stopped"))
+                self._replies.drop_all()
 
                 # Closing a memory channel can't block, but it only has an
                 # async close method, so we need to shield it from cancellation.
@@ -310,10 +310,6 @@ class DBusRouter:
                     for filter in self._filters.filters.values():
                         cleanup_scope.shield = True
                         await filter.send_channel.aclose()
-
-
-class NoReplyError(Exception):
-    pass
 
 
 class Proxy(ProxyBase):

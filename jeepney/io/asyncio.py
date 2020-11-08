@@ -7,7 +7,7 @@ from jeepney.bus import get_bus
 from jeepney import Message, MessageType, Parser
 from jeepney.wrappers import ProxyBase, unwrap_msg
 from jeepney.bus_messages import message_bus
-from .utils import MessageFilters, FilterHandle, ReplyMatcher
+from .common import MessageFilters, FilterHandle, ReplyMatcher
 
 
 class DBusConnection:
@@ -173,7 +173,7 @@ class DBusRouter:
         finally:
             self.is_running = False
             # Send errors to any tasks still waiting for a message.
-            self._replies.drop_all(NoReplyError("Reply receiver stopped"))
+            self._replies.drop_all()
 
 class open_dbus_router:
     """Open a D-Bus 'router' to send and receive messages
@@ -197,10 +197,6 @@ class open_dbus_router:
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         await self.req_ctx.__aexit__(exc_type, exc_val, exc_tb)
         await self.conn.close()
-
-
-class NoReplyError(Exception):
-    pass
 
 
 class Proxy(ProxyBase):

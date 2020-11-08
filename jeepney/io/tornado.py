@@ -14,7 +14,7 @@ from jeepney.low_level import Parser, MessageType, Message, MessageFlag
 from jeepney.wrappers import ProxyBase, unwrap_msg
 from jeepney.routing import Router
 from jeepney.bus_messages import message_bus
-from .utils import MessageFilters, FilterHandle, ReplyMatcher
+from .common import MessageFilters, FilterHandle, ReplyMatcher
 
 
 class DBusConnection:
@@ -158,11 +158,7 @@ class DBusRouter:
         finally:
             self.is_running = False
             # Send errors to any tasks still waiting for a message.
-            self._replies.drop_all(NoReplyError("Reply receiver stopped"))
-
-
-class NoReplyError(Exception):
-    pass
+            self._replies.drop_all()
 
 
 class Proxy(ProxyBase):

@@ -16,7 +16,7 @@ from jeepney.bus import get_bus
 from jeepney.bus_messages import message_bus
 from jeepney.wrappers import ProxyBase, unwrap_msg
 from .blocking import unwrap_read
-from .utils import MessageFilters, FilterHandle, ReplyMatcher
+from .common import MessageFilters, FilterHandle, ReplyMatcher
 
 
 class ReceiveStopped(Exception):
@@ -217,6 +217,9 @@ class DBusRouter:
                 self._dispatch(msg)
         except ReceiveStopped:
             pass
+        finally:
+            # Send errors to any tasks still waiting for a message.
+            self._replies.drop_all()
 
 class Proxy(ProxyBase):
     """A blocking proxy for calling D-Bus methods via a :class:`DBusRouter`.

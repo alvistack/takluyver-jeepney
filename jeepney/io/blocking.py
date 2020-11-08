@@ -16,7 +16,7 @@ from jeepney.bus import get_bus
 from jeepney.wrappers import ProxyBase, unwrap_msg
 from jeepney.routing import Router
 from jeepney.bus_messages import message_bus
-from .utils import MessageFilters, FilterHandle
+from .common import MessageFilters, FilterHandle
 
 
 class _Future:
