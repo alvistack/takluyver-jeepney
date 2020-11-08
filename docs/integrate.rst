@@ -23,6 +23,8 @@ And here is the same thing using asyncio:
 See the `examples folder <https://gitlab.com/takluyver/jeepney/-/tree/master/examples>`_
 in Jeepney's source repository for more examples.
 
+.. _connections_and_routers:
+
 Connections and Routers
 -----------------------
 

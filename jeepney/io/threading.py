@@ -44,20 +44,21 @@ class DBusConnection:
         return False
 
     def send(self, message: Message, serial=None):
+        """Serialise and send a :class:`~.Message` object"""
         if serial is None:
             serial = next(self.outgoing_serial)
         data = message.serialise(serial=serial)
         with self.send_lock:
             self.sock.sendall(data)
 
-    def receive(self, timeout=None):
+    def receive(self, timeout=None) -> Message:
         """Return the next available message from the connection
 
         If the data is ready, this will return immediately, even if timeout<=0.
         Otherwise, it will wait for up to timeout seconds, or indefinitely if
         timeout is None. If no message comes in time, it raises TimeoutError.
 
-        If .interrupt() is called from another thread, this will raise
+        If the connection is closed from another thread, this will raise
         ReceiveStopped.
         """
         if timeout is not None:
@@ -102,12 +103,17 @@ class DBusConnection:
             os.read(self._stop_r, 1024)
 
     def close(self):
+        """Close the connection"""
         self.interrupt()
         self.selector.close()
         self.sock.close()
 
 
 def open_dbus_connection(bus='SESSION'):
+    """Open a plain D-Bus connection
+
+    :return: :class:`DBusConnection`
+    """
     bus_addr = get_bus(bus)
     sock = socket.socket(family=socket.AF_UNIX)
     sock.connect(bus_addr)
@@ -131,6 +137,14 @@ def open_dbus_connection(bus='SESSION'):
 
 
 class DBusRouter:
+    """A client D-Bus connection which can wait for replies.
+
+    This runs a separate receiver thread and dispatches received messages.
+
+    It's possible to wrap a :class:`DBusConnection` in a router temporarily.
+    Using the connection directly while it is wrapped is not supported,
+    but you can use it again after the router is closed.
+    """
     def __init__(self, conn: DBusConnection):
         self.conn = conn
         self._replies = ReplyMatcher()
@@ -142,14 +156,23 @@ class DBusRouter:
     def unique_name(self):
         return self.conn.unique_name
 
-    def send_and_get_reply(self, msg: Message, timeout=None):
+    def send(self, message, *, serial=None):
+        """Serialise and send a :class:`~.Message` object"""
+        self.conn.send(message, serial=serial)
+
+    def send_and_get_reply(self, msg: Message, timeout=None) -> Message:
+        """Send a method call message, wait for and return a reply"""
         serial = next(self.conn.outgoing_serial)
 
         with self._replies.catch(serial, Future()) as reply_fut:
             self.conn.send(msg, serial=serial)
             return reply_fut.result(timeout=timeout)
 
-    def stop(self):
+    def close(self):
+        """Close this router
+
+        This does not close the underlying connection.
+        """
         self.conn.interrupt()
         self._rcv_thread.join(timeout=10)
         self.conn.reset_interrupt()
@@ -158,7 +181,7 @@ class DBusRouter:
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        self.stop()
+        self.close()
         return False
 
     def filter(self, rule, *, queue: Optional[Queue] =None, bufsize=1):
@@ -221,6 +244,18 @@ class Proxy(ProxyBase):
 
 @contextmanager
 def open_dbus_router(bus='SESSION'):
+    """Open a D-Bus 'router' to send and receive messages.
+
+    Use as a context manager::
+
+        with open_dbus_router() as router:
+            ...
+
+    On leaving the ``with`` block, the connection will be closed.
+
+    :param str bus: 'SESSION' or 'SYSTEM' or a supported address.
+    :return: :class:`DBusRouter`
+    """
     with open_dbus_connection(bus=bus) as conn:
         with DBusRouter(conn) as router:
             yield router

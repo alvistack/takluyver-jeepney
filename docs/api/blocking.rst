@@ -1,6 +1,10 @@
 Blocking I/O
 ============
 
+This is a good option for simple scripts, where you don't need to do anything
+else while waiting for a D-Bus reply. If you will use D-Bus for multiple
+threads, or you want a nicer way to wait for signals, see :doc:`threading`.
+
 .. module:: jeepney.io.blocking
 
 .. autofunction:: open_dbus_connection

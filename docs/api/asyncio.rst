@@ -1,6 +1,10 @@
 Asyncio integration
 ===================
 
+This supports D-Bus in applications built with
+`asyncio <https://docs.python.org/3/library/asyncio.html>`_.
+See :ref:`connections_and_routers` for more about the two interfaces.
+
 .. module:: jeepney.io.asyncio
 
 .. autofunction:: open_dbus_router

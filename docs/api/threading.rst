@@ -1,11 +1,11 @@
-Trio integration
-================
+Blocking I/O with threads
+=========================
 
-This supports D-Bus in applications built with
-`Trio <https://trio.readthedocs.io/en/stable/>`_.
+This allows using a D-Bus connection from multiple threads.
+The router also launches a separate thread to receive incoming messages.
 See :ref:`connections_and_routers` for more about the two interfaces.
 
-.. module:: jeepney.io.trio
+.. module:: jeepney.io.threading
 
 .. autofunction:: open_dbus_router
 
@@ -17,9 +17,9 @@ See :ref:`connections_and_routers` for more about the two interfaces.
 
    .. automethod:: filter
 
-   .. automethod:: aclose
+   .. automethod:: close
 
-      Leaving the ``async with`` block will also close the router.
+      Leaving the ``with`` block will also close the router.
 
 .. autoclass:: Proxy
 
@@ -31,6 +31,5 @@ See :ref:`connections_and_routers` for more about the two interfaces.
 
    .. automethod:: receive
 
-   .. automethod:: router
+   .. automethod:: close
 
-   .. automethod:: aclose

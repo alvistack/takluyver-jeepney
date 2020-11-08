@@ -13,5 +13,6 @@ API reference
    :caption: I/O integrations
 
    blocking
+   threading
    trio
    asyncio
