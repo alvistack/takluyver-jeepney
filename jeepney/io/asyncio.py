@@ -7,7 +7,9 @@ from jeepney.bus import get_bus
 from jeepney import Message, MessageType, Parser
 from jeepney.wrappers import ProxyBase, unwrap_msg
 from jeepney.bus_messages import message_bus
-from .common import MessageFilters, FilterHandle, ReplyMatcher
+from .common import (
+    MessageFilters, FilterHandle, ReplyMatcher, RouterClosed, check_replyable,
+)
 
 
 class DBusConnection:
@@ -116,10 +118,9 @@ class DBusRouter:
 
         Returns the reply message (method return or error message type).
         """
-        if message.header.message_type != MessageType.method_call:
-            raise TypeError("Only method call messages have replies")
+        check_replyable(message)
         if self._rcv_task.done():
-            raise RuntimeError("Receiver task is not running")
+            raise RouterClosed("This DBusRouter has stopped")
 
         serial = next(self._conn.outgoing_serial)
 

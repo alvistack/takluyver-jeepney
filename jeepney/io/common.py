@@ -1,7 +1,7 @@
 from contextlib import contextmanager
 from itertools import count
 
-from jeepney import HeaderFields
+from jeepney import HeaderFields, Message, MessageFlag, MessageType
 
 class MessageFilters:
     def __init__(self):
@@ -77,3 +77,12 @@ class RouterClosed(Exception):
     be usable after this is raised.
     """
     pass
+
+
+def check_replyable(msg: Message):
+    """Raise an error if we wouldn't expect a reply for msg"""
+    if msg.header.message_type != MessageType.method_call:
+        raise TypeError("Only method call messages have replies "
+                        f"(not {msg.header.message_type})")
+    if MessageFlag.no_reply_expected & msg.header.flags:
+        raise ValueError("This message has the no_reply_expected flag set")

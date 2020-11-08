@@ -16,7 +16,7 @@ from jeepney.bus import get_bus
 from jeepney.wrappers import ProxyBase, unwrap_msg
 from jeepney.routing import Router
 from jeepney.bus_messages import message_bus
-from .common import MessageFilters, FilterHandle
+from .common import MessageFilters, FilterHandle, check_replyable
 
 
 class _Future:
@@ -119,6 +119,7 @@ class DBusConnection:
         Filters are applied to other messages received before the reply -
         see :meth:`add_filter`.
         """
+        check_replyable(message)
         if timeout is not None:
             deadline = time.monotonic() + timeout
         else:

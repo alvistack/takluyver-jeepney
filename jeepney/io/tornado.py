@@ -14,7 +14,9 @@ from jeepney.low_level import Parser, MessageType, Message, MessageFlag
 from jeepney.wrappers import ProxyBase, unwrap_msg
 from jeepney.routing import Router
 from jeepney.bus_messages import message_bus
-from .common import MessageFilters, FilterHandle, ReplyMatcher
+from .common import (
+    MessageFilters, FilterHandle, ReplyMatcher, RouterClosed, check_replyable,
+)
 
 
 class DBusConnection:
@@ -81,10 +83,9 @@ class DBusRouter:
         await self.conn.send(message, serial=serial)
 
     async def send_and_get_reply(self, message):
-        if message.header.message_type != MessageType.method_call:
-            raise TypeError("Only method call messages have replies")
+        check_replyable(message)
         if self._stop_receiving.is_set():
-            raise RuntimeError("This DBusRouter has been stopped")
+            raise RouterClosed("This DBusRouter has stopped")
 
         serial = next(self.conn.outgoing_serial)
 

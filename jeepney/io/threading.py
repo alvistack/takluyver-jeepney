@@ -16,7 +16,9 @@ from jeepney.bus import get_bus
 from jeepney.bus_messages import message_bus
 from jeepney.wrappers import ProxyBase, unwrap_msg
 from .blocking import unwrap_read
-from .common import MessageFilters, FilterHandle, ReplyMatcher
+from .common import (
+    MessageFilters, FilterHandle, ReplyMatcher, RouterClosed, check_replyable,
+)
 
 
 class ReceiveStopped(Exception):
@@ -162,6 +164,10 @@ class DBusRouter:
 
     def send_and_get_reply(self, msg: Message, *, timeout=None) -> Message:
         """Send a method call message, wait for and return a reply"""
+        check_replyable(msg)
+        if not self._rcv_thread.is_alive():
+            raise RouterClosed("This D-Bus router has stopped")
+
         serial = next(self.conn.outgoing_serial)
 
         with self._replies.catch(serial, Future()) as reply_fut:
