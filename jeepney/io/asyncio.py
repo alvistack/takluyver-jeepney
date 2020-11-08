@@ -104,6 +104,10 @@ class DBusRouter:
         self._filters = MessageFilters()
         self._rcv_task = asyncio.create_task(self._receiver())
 
+    @property
+    def unique_name(self):
+        return self._conn.unique_name
+
     async def send(self, message, *, serial=None):
         """Send a message, don't wait for a reply"""
         await self._conn.send(message, serial=serial)

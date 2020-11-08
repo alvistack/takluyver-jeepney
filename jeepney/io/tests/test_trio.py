@@ -2,7 +2,7 @@ import trio
 import pytest
 
 from jeepney import DBusAddress, DBusErrorResponse, MessageType, new_method_call
-from jeepney.bus_messages import message_bus
+from jeepney.bus_messages import message_bus, MatchRule
 from jeepney.io.trio import (
     open_dbus_connection, open_dbus_router, Proxy,
 )
@@ -64,3 +64,29 @@ async def test_proxy_error():
         proxy = Proxy(message_bus, req)
         with pytest.raises(DBusErrorResponse):
             await proxy.RequestName(":123")  # Invalid name
+
+
+async def test_filter():
+    name = "io.gitlab.takluyver.jeepney.tests.trio_test_filter"
+    async with open_dbus_router(bus='SESSION') as router:
+        bus = Proxy(message_bus, router)
+
+        match_rule = MatchRule(
+            type="signal",
+            sender=message_bus.bus_name,
+            interface=message_bus.interface,
+            member="NameOwnerChanged",
+            path=message_bus.object_path,
+        )
+        match_rule.add_arg_condition(0, name)
+
+        # Ask the message bus to subscribe us to this signal
+        await bus.AddMatch(match_rule)
+
+        async with router.filter(match_rule) as chan:
+            res, = await bus.RequestName(name)
+            assert res == 1  # 1: got the name
+
+            with trio.fail_after(2.0):
+                signal_msg = await chan.receive()
+            assert signal_msg.body == (name, '', router.unique_name)

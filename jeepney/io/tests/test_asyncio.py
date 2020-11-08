@@ -3,7 +3,7 @@ import asyncio
 import pytest
 
 from jeepney import DBusAddress, new_method_call
-from jeepney.bus_messages import message_bus
+from jeepney.bus_messages import message_bus, MatchRule
 from jeepney.io.asyncio import (
     open_dbus_connection, open_dbus_router, Proxy
 )
@@ -52,3 +52,26 @@ async def test_proxy(router):
 
     has_owner, = await proxy.NameHasOwner(name)
     assert has_owner is True
+
+async def test_filter(router):
+    bus = Proxy(message_bus, router)
+    name = "io.gitlab.takluyver.jeepney.tests.asyncio_test_filter"
+
+    match_rule = MatchRule(
+        type="signal",
+        sender=message_bus.bus_name,
+        interface=message_bus.interface,
+        member="NameOwnerChanged",
+        path=message_bus.object_path,
+    )
+    match_rule.add_arg_condition(0, name)
+
+    # Ask the message bus to subscribe us to this signal
+    await bus.AddMatch(match_rule)
+
+    with router.filter(match_rule) as queue:
+        res, = await bus.RequestName(name)
+        assert res == 1  # 1: got the name
+
+        signal_msg = await asyncio.wait_for(queue.get(), timeout=2.0)
+        assert signal_msg.body == (name, '', router.unique_name)
