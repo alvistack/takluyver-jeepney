@@ -169,11 +169,16 @@ class DBusConnection:
 class Proxy(ProxyBase):
     """A blocking proxy for calling D-Bus methods
 
-    :param msggen: A message generator object.
-    :param ~blocking.DBusConnection connection: Connection to send and receive messages.
-    :param float timeout: Seconds to wait for a reply, or None for no limit.
+    You can call methods on the proxy object, such as ``bus_proxy.Hello()``
+    to make a method call over D-Bus and wait for a reply. It will either
+    return a tuple of returned data, or raise :exc:`DBusErrorResponse`.
+    The methods available are defined by the message generator you wrap.
+
+    :param msggen: A message generator object
+    :param ~blocking.DBusConnection connection: Connection to send and receive messages
+    :param float timeout: Seconds to wait for a reply, or None for no limit
     """
-    def __init__(self, msggen, connection, timeout=None):
+    def __init__(self, msggen, connection, *, timeout=None):
         super().__init__(msggen)
         self._connection = connection
         self._timeout = timeout

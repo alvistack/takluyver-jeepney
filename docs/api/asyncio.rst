@@ -19,6 +19,8 @@ See :ref:`connections_and_routers` for more about the two interfaces.
 
 .. autoclass:: Proxy
 
+   .. seealso:: :ref:`msggen_proxies`
+
 .. autofunction:: open_dbus_connection
 
 .. autoclass:: DBusConnection

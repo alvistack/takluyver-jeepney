@@ -27,3 +27,5 @@ threads, or you want a nicer way to wait for signals, see :doc:`threading`.
       exiting the block.
 
 .. autoclass:: Proxy
+
+   .. seealso:: :ref:`msggen_proxies`
