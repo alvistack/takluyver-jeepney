@@ -96,7 +96,6 @@ class DBusRouter:
     _nursery_mgr = None
     _send_cancel_scope = None
     _rcv_cancel_scope = None
-    is_running = False
 
     def __init__(self, conn: DBusConnection):
         self._conn = conn
@@ -171,7 +170,6 @@ class DBusRouter:
                 msg = await self._conn.receive()
                 self._dispatch(msg)
         finally:
-            self.is_running = False
             # Send errors to any tasks still waiting for a message.
             self._replies.drop_all()
 
