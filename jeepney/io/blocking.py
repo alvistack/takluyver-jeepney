@@ -73,7 +73,7 @@ class DBusConnection:
 
     send_message = send  # Backwards compatibility
 
-    def receive(self, timeout=None) -> Message:
+    def receive(self, *, timeout=None) -> Message:
         """Return the next available message from the connection
 
         If the data is ready, this will return immediately, even if timeout<=0.
@@ -103,7 +103,7 @@ class DBusConnection:
 
         raise TimeoutError
 
-    def recv_messages(self, timeout=None):
+    def recv_messages(self, *, timeout=None):
         """Receive one message and apply filters
 
         See :meth:`filter`. Returns nothing.
@@ -113,7 +113,7 @@ class DBusConnection:
         for filter in self._filters.matches(msg):
             filter.queue.append(msg)
 
-    def send_and_get_reply(self, message, timeout=None, unwrap=None):
+    def send_and_get_reply(self, message, *, timeout=None, unwrap=None):
         """Send a message, wait for the reply and return it
 
         Filters are applied to other messages received before the reply -

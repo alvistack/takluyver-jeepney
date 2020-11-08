@@ -51,7 +51,7 @@ class DBusConnection:
         with self.send_lock:
             self.sock.sendall(data)
 
-    def receive(self, timeout=None) -> Message:
+    def receive(self, *, timeout=None) -> Message:
         """Return the next available message from the connection
 
         If the data is ready, this will return immediately, even if timeout<=0.
@@ -160,7 +160,7 @@ class DBusRouter:
         """Serialise and send a :class:`~.Message` object"""
         self.conn.send(message, serial=serial)
 
-    def send_and_get_reply(self, msg: Message, timeout=None) -> Message:
+    def send_and_get_reply(self, msg: Message, *, timeout=None) -> Message:
         """Send a method call message, wait for and return a reply"""
         serial = next(self.conn.outgoing_serial)
 
