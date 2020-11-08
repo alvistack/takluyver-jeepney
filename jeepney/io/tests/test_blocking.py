@@ -1,8 +1,8 @@
 import pytest
 
 from jeepney import new_method_call, MessageType, DBusAddress
-from jeepney.bus_messages import message_bus
-from jeepney.integrate.blocking import connect_and_authenticate, Proxy
+from jeepney.bus_messages import message_bus, MatchRule
+from jeepney.io.blocking import open_dbus_connection, Proxy
 from .utils import have_session_bus
 
 pytestmark = pytest.mark.skipif(
@@ -11,7 +11,7 @@ pytestmark = pytest.mark.skipif(
 
 @pytest.fixture
 def session_conn():
-    with connect_and_authenticate(bus='SESSION') as conn:
+    with open_dbus_connection(bus='SESSION') as conn:
         yield conn
 
 
@@ -40,5 +40,35 @@ def test_proxy(session_conn):
     res = proxy.RequestName(name)
     assert res in {(1,), (2,)}  # 1: got the name, 2: queued
 
-    has_owner, = proxy.NameHasOwner(name)
+    has_owner, = proxy.NameHasOwner(name, _timeout=3)
     assert has_owner is True
+
+def test_filter(session_conn):
+    bus = Proxy(message_bus, session_conn)
+    name = "io.gitlab.takluyver.jeepney.tests.blocking_test_filter"
+
+    match_rule = MatchRule(
+        type="signal",
+        sender=message_bus.bus_name,
+        interface=message_bus.interface,
+        member="NameOwnerChanged",
+        path=message_bus.object_path,
+    )
+    match_rule.add_arg_condition(0, name)
+
+    # Ask the message bus to subscribe us to this signal
+    bus.AddMatch(match_rule)
+
+    with session_conn.filter(match_rule) as matches:
+        res, = bus.RequestName(name)
+        assert res == 1  # 1: got the name
+
+        for _ in range(5):
+            if len(matches):
+                break
+            session_conn.recv_messages(timeout=1.0)
+        else:
+            raise AssertionError("Expected signal message not received")
+
+        signal_msg = matches.popleft()
+        assert signal_msg.body == (name, '', session_conn.unique_name)

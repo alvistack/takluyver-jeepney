@@ -19,24 +19,12 @@ Client 2
 
 import asyncio
 
-from jeepney.integrate.asyncio import connect_and_authenticate, Proxy
+from jeepney.io.asyncio import open_dbus_router, Proxy
 from jeepney.bus_messages import message_bus, MatchRule
 
 well_known_bus_name = "io.readthedocs.jeepney.aio_subscribe_example"
 
-
-def print_match(match_info):
-    """A demo callback triggered on successful matches."""
-    print("[watcher] match hit:", match_info)
-
-
-async def main():
-    __, service_proto = await connect_and_authenticate("SESSION")
-    __, watcher_proto = await connect_and_authenticate("SESSION")
-    # Interface objects used by each app to interact with the message bus
-    service = Proxy(message_bus, service_proto)
-    watcher = Proxy(message_bus, watcher_proto)
-
+async def watcher(ready: asyncio.Event):
     # Create a "signal-selection" match rule
     match_rule = MatchRule(
         type="signal",
@@ -49,27 +37,28 @@ async def main():
     # Condition: arg number 0 must match the bus name (try changing either)
     match_rule.add_arg_condition(0, well_known_bus_name)
 
-    # Register a callback
-    watcher_proto.router.subscribe_signal(
-        callback=print_match,
-        path=message_bus.object_path,
-        interface=message_bus.interface,
-        member="NameOwnerChanged"
-    )
+    async with open_dbus_router() as router:
+        await Proxy(message_bus, router).AddMatch(match_rule)
 
-    # Tell the session bus to pass us matching signal messages.
-    print("[watcher] adding match rule")
-    await watcher.AddMatch(match_rule)
-    await asyncio.sleep(1)
+        with router.filter(match_rule) as q:
+            print("[watcher] subscribed to NameOwnerChanged signal")
+            ready.set()
 
-    print("[service] calling 'RequestName'")
-    resp = await service.RequestName(well_known_bus_name, 4)
+            msg = await q.get()
+            print("[watcher] match hit:", msg.body)
 
-    print("[service] reply:", (None, "primary owner", "in queue",
-                               "exists", "already owned")[resp[0]])
+async def main():
+    watcher_ready = asyncio.Event()
+    watcher_task = asyncio.create_task(watcher(watcher_ready))
+    await watcher_ready.wait()
 
-    await asyncio.sleep(1)
+    async with open_dbus_router() as router:
+        print("[service] calling 'RequestName'")
+        resp = await Proxy(message_bus, router).RequestName(well_known_bus_name, 4)
+        print("[service] reply:", (None, "primary owner", "in queue",
+                                   "exists", "already owned")[resp[0]])
+
+    await watcher_task
 
 if __name__ == "__main__":
-    loop = asyncio.get_event_loop()
-    loop.run_until_complete(main())
+    asyncio.run(main())

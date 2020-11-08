@@ -174,3 +174,17 @@ Enums & Flags
    .. autoattribute:: error
 
    .. autoattribute:: signal
+
+Matching messages
+-----------------
+
+.. autoclass:: MatchRule
+
+   MatchRule objects are used both for filtering messages internally, and for
+   setting up subscriptions in the message bus.
+
+   .. automethod:: add_arg_condition
+
+   .. automethod:: matches
+
+   .. automethod:: serialise

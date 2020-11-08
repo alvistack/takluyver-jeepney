@@ -1,10 +1,9 @@
 import asyncio
 
-from jeepney.integrate.asyncio import connect_and_authenticate
+from jeepney.io.asyncio import open_dbus_connection
 
 async def hello():
-    (t, p) = await connect_and_authenticate(bus='SESSION')
-    print('My ID is:', p.unique_name)
+    conn = await open_dbus_connection(bus='SESSION')
+    print('My ID is:', conn.unique_name)
     
-loop = asyncio.get_event_loop()
-loop.run_until_complete(hello())
+asyncio.run(hello())

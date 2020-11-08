@@ -1,11 +1,12 @@
+"""Deprecated: use jeepney.io.asyncio instead"""
 import asyncio
 
-from jeepney.auth import SASLParser, make_auth_external, BEGIN, AuthenticationError
+from jeepney import Parser, MessageType
+from jeepney.auth import AuthenticationError, BEGIN, make_auth_external, SASLParser
 from jeepney.bus import get_bus
-from jeepney.low_level import Parser, MessageType
-from jeepney.wrappers import ProxyBase
-from jeepney.routing import Router
 from jeepney.bus_messages import message_bus
+from jeepney.routing import Router
+from jeepney.wrappers import ProxyBase
 
 class DBusProtocol(asyncio.Protocol):
     def __init__(self):
@@ -45,7 +46,18 @@ class DBusProtocol(asyncio.Protocol):
         self.transport.write(data)
         return future
 
+    async def send_and_get_reply(self, message):
+        if message.header.message_type != MessageType.method_call:
+            raise TypeError("Only method call messages have replies")
+
+        return await self.send_message(message)
+
 class Proxy(ProxyBase):
+    """An asyncio proxy for calling D-Bus methods
+
+    :param msggen: A message generator object.
+    :param DBusProtocol proto: Protocol object to send and receive messages.
+    """
     def __init__(self, msggen, protocol):
         super().__init__(msggen)
         self._protocol = protocol
@@ -54,10 +66,10 @@ class Proxy(ProxyBase):
         return 'Proxy({}, {})'.format(self._msggen, self._protocol)
 
     def _method_call(self, make_msg):
-        def inner(*args, **kwargs):
+        async def inner(*args, **kwargs):
             msg = make_msg(*args, **kwargs)
             assert msg.header.message_type is MessageType.method_call
-            return self._protocol.send_message(msg)
+            return await self._protocol.send_and_get_reply(msg)
 
         return inner
 

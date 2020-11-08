@@ -5,7 +5,7 @@ Jeepney is a pure Python interface to D-Bus, a protocol for interprocess
 communication on desktop Linux (mostly).
 
 The core of Jeepney is `I/O free <https://sans-io.readthedocs.io/>`__, and the
-``jeepney.integrate`` package contains bindings for different event loops to
+``jeepney.io`` package contains bindings for different event loops to
 handle I/O. Jeepney tries to be *non-magical*, so you may have to write a bit
 more code than with other interfaces such as `dbus-python <https://pypi.python.org/pypi/dbus-python>`_
 or `pydbus <https://github.com/LEW21/pydbus>`_.

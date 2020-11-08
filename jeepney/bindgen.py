@@ -4,7 +4,7 @@ from textwrap import indent
 import xml.etree.ElementTree as ET
 
 from jeepney.wrappers import Introspectable
-from jeepney.integrate.blocking import connect_and_authenticate
+from jeepney.io.blocking import open_dbus_connection, Proxy
 from jeepney import __version__
 
 class Method:
@@ -101,9 +101,9 @@ def code_from_xml(xml, path, bus_name, fh):
     return i
 
 def generate(path, name, output_file, bus='SESSION'):
-    conn = connect_and_authenticate(bus)
-    msg = Introspectable(path, name).Introspect()
-    xml = conn.send_and_get_reply(msg)[0]
+    conn = open_dbus_connection(bus)
+    introspectable = Proxy(Introspectable(path, name), conn)
+    xml, = introspectable.Introspect()
     # print(xml)
 
     n_interfaces = code_from_xml(xml, path, name, output_file)

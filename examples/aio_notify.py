@@ -1,7 +1,11 @@
+"""Send a desktop notification
+
+See also aio_notify_noproxy.py, which does the same with lower-level APIs
+"""
 import asyncio
 
 from jeepney import MessageGenerator, new_method_call
-from jeepney.integrate.asyncio import connect_and_authenticate, Proxy
+from jeepney.io.asyncio import open_dbus_router, Proxy
 
 # ---- Message generator, created by jeepney.bindgen ----
 class Notifications(MessageGenerator):
@@ -28,19 +32,18 @@ class Notifications(MessageGenerator):
 
 
 async def send_notification():
-    (transport, protocol) = await connect_and_authenticate(bus='SESSION')
-    proxy = Proxy(Notifications(), protocol)
+    async with open_dbus_router() as router:
+        proxy = Proxy(Notifications(), router)
 
-    resp = await proxy.Notify('jeepney_test',  # App name
-                          0,      # Not replacing any previous notification
-                          '',     # Icon
-                          'Hello, world!',  # Summary
-                          'This is an example notification from Jeepney',
-                          [], {},  # Actions, hints
-                          -1,      # expire_timeout (-1 = default)
-                         )
-    print('Notification ID:', resp[0])
+        resp = await proxy.Notify('jeepney_test',  # App name
+                              0,      # Not replacing any previous notification
+                              '',     # Icon
+                              'Hello, world!',  # Summary
+                              'This is an example notification from Jeepney',
+                              [], {},  # Actions, hints
+                              -1,      # expire_timeout (-1 = default)
+                             )
+        print('Notification ID:', resp[0])
 
 if __name__ == '__main__':
-    loop = asyncio.get_event_loop()
-    loop.run_until_complete(send_notification())
+    asyncio.run(send_notification())

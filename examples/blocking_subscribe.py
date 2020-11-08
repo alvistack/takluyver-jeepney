@@ -13,52 +13,41 @@ https://people.gnome.org/~mccann/docs/notification-spec/notification-spec-latest
 Match rules are defined in the D-Bus specification:
 https://dbus.freedesktop.org/doc/dbus-specification.html#message-bus-routing-match-rules
 """
+from collections import deque
 
 from jeepney.bus_messages import MatchRule, message_bus
-from jeepney.integrate.blocking import connect_and_authenticate, Proxy
+from jeepney.io.blocking import open_dbus_connection, Proxy
 from jeepney.wrappers import DBusAddress
 
 noti = DBusAddress('/org/freedesktop/Notifications',
                    bus_name='org.freedesktop.Notifications',
                    interface='org.freedesktop.Notifications')
 
-connection = connect_and_authenticate(bus="SESSION")
+connection = open_dbus_connection(bus="SESSION")
 
 match_rule = MatchRule(
     type="signal",
-    sender=noti.bus_name,
     interface=noti.interface,
     member="NotificationClosed",
     path=noti.object_path,
 )
 
-# This defines messages for talking to the D-Bus bus daemon itself:
-session_bus = Proxy(message_bus, connection)
+
 
 # Tell the session bus to pass us matching signal messages:
-print("Match added?", session_bus.AddMatch(match_rule) == ())
+bus_proxy = Proxy(message_bus, connection)
+print("Match added?", bus_proxy.AddMatch(match_rule) == ())
+
+print("Trigger a desktop notification (e.g. with notify-send) and then close it")
+
+with connection.filter(match_rule) as queue:
+    while len(queue) == 0:
+        connection.recv_messages()
 
 reasons = {1: 'expiry', 2: 'dismissal', 3: 'dbus', '4': 'undefined'}
-def notification_closed(data):
-    """Callback for when we receive a notification closed signal"""
-    nid, reason_no = data
-    reason = reasons.get(reason_no, 'unknown')
-    print('Notification {} closed by: {}'.format(nid, reason))
 
-# Connect the callback to the relevant signal
-connection.router.subscribe_signal(
-    callback=notification_closed,
-    path=noti.object_path,
-    interface=noti.interface,
-    member="NotificationClosed"
-)
-
-# Using dbus-send or d-feet or blocking_notify.py, send a notification and
-# manually close it or call ``.CloseNotification`` after a beat.
-try:
-    while True:
-        connection.recv_messages()
-except KeyboardInterrupt:
-    pass
+nid, reason_no = queue.popleft().body
+reason = reasons.get(reason_no, 'unknown')
+print('Notification {} closed by: {}'.format(nid, reason))
 
 connection.close()
