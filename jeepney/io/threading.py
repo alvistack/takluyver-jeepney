@@ -138,6 +138,10 @@ class DBusRouter:
         self._rcv_thread = Thread(target=self._receiver, daemon=True)
         self._rcv_thread.start()
 
+    @property
+    def unique_name(self):
+        return self.conn.unique_name
+
     def send_and_get_reply(self, msg: Message, timeout=None):
         serial = next(self.conn.outgoing_serial)
 

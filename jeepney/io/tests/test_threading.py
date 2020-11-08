@@ -2,7 +2,7 @@ import pytest
 
 from jeepney import new_method_call, MessageType, DBusAddress
 from jeepney.bus_messages import message_bus, MatchRule
-from jeepney.io.blocking import open_dbus_connection, Proxy
+from jeepney.io.threading import open_dbus_router, Proxy
 from .utils import have_session_bus
 
 pytestmark = pytest.mark.skipif(
@@ -10,13 +10,13 @@ pytestmark = pytest.mark.skipif(
 )
 
 @pytest.fixture
-def session_conn():
-    with open_dbus_connection(bus='SESSION') as conn:
+def router():
+    with open_dbus_router(bus='SESSION') as conn:
         yield conn
 
 
-def test_connect(session_conn):
-    assert session_conn.unique_name.startswith(':')
+def test_connect(router):
+    assert router.unique_name.startswith(':')
 
 bus_peer = DBusAddress(
     bus_name='org.freedesktop.DBus',
@@ -24,18 +24,14 @@ bus_peer = DBusAddress(
     interface='org.freedesktop.DBus.Peer'
 )
 
-def test_send_and_get_reply(session_conn):
+def test_send_and_get_reply(router):
     ping_call = new_method_call(bus_peer, 'Ping')
-    reply = session_conn.send_and_get_reply(ping_call, timeout=5, unwrap=False)
+    reply = router.send_and_get_reply(ping_call, timeout=5)
     assert reply.header.message_type == MessageType.method_return
     assert reply.body == ()
 
-    ping_call = new_method_call(bus_peer, 'Ping')
-    reply_body = session_conn.send_and_get_reply(ping_call, timeout=5, unwrap=True)
-    assert reply_body == ()
-
-def test_proxy(session_conn):
-    proxy = Proxy(message_bus, session_conn, timeout=5)
+def test_proxy(router):
+    proxy = Proxy(message_bus, router, timeout=5)
     name = "io.gitlab.takluyver.jeepney.examples.Server"
     res = proxy.RequestName(name)
     assert res in {(1,), (2,)}  # 1: got the name, 2: queued
@@ -43,9 +39,9 @@ def test_proxy(session_conn):
     has_owner, = proxy.NameHasOwner(name)
     assert has_owner is True
 
-def test_filter(session_conn):
-    bus = Proxy(message_bus, session_conn)
-    name = "io.gitlab.takluyver.jeepney.tests.blocking_test_filter"
+def test_filter(router):
+    bus = Proxy(message_bus, router)
+    name = "io.gitlab.takluyver.jeepney.tests.threading_test_filter"
 
     match_rule = MatchRule(
         type="signal",
@@ -59,16 +55,9 @@ def test_filter(session_conn):
     # Ask the message bus to subscribe us to this signal
     bus.AddMatch(match_rule)
 
-    with session_conn.filter(match_rule) as matches:
+    with router.filter(match_rule) as queue:
         res, = bus.RequestName(name)
         assert res == 1  # 1: got the name
 
-        for _ in range(5):
-            if len(matches):
-                break
-            session_conn.recv_messages(timeout=1.0)
-        else:
-            raise AssertionError("Expected signal message not received")
-
-        signal_msg = matches.popleft()
-        assert signal_msg.body == (name, '', session_conn.unique_name)
+        signal_msg = queue.get(timeout=2.0)
+        assert signal_msg.body == (name, '', router.unique_name)
