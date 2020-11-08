@@ -274,9 +274,10 @@ class DBusRouter:
     async def _sender(self, task_status=trio.TASK_STATUS_IGNORED):
         with trio.CancelScope() as cscope:
             task_status.started(cscope)
-            async for bmsg in self._to_be_sent:
-                async with self._conn.send_lock:
-                    await self._conn.socket.send_all(bmsg)
+            async with self._to_be_sent:
+                async for bmsg in self._to_be_sent:
+                    async with self._conn.send_lock:
+                        await self._conn.socket.send_all(bmsg)
 
     # Code to run in receiver task ------------------------------------
 
