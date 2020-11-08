@@ -223,7 +223,7 @@ class Proxy(ProxyBase):
 
     You can call methods on the proxy object, such as ``bus_proxy.Hello()``
     to make a method call over D-Bus and wait for a reply. It will either
-    return a tuple of returned data, or raise :exc:`DBusErrorResponse`.
+    return a tuple of returned data, or raise :exc:`.DBusErrorResponse`.
     The methods available are defined by the message generator you wrap.
 
     :param msggen: A message generator object
