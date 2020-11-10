@@ -1,6 +1,25 @@
 Release notes
 =============
 
+0.5
+---
+
+* New common scheme for I/O integration - see :ref:`connections_and_routers`.
+
+  * This is designed for tasks to wait for messages and then act on them,
+    rather than triggering callbacks. This is based on ideas from 'structured
+    concurrency', which also informs the design of Trio. See `this blog post
+    by Nathaniel Smith <https://vorpus.org/blog/notes-on-structured-concurrency-or-go-statement-considered-harmful/>`_
+    for more background.
+  * There are new integrations for :doc:`Trio <api/trio>` and :doc:`threading
+    <api/threading>`.
+  * The old integration interfaces should still work for now, but they will be
+    deprecated and eventually removed.
+
+* :meth:`.Message.serialise` accepts a serial number, to serialise outgoing
+  messages without modifying the message object.
+* Improved documentation, including :doc:`API docs <api/index>`.
+
 0.4.3
 -----
 
