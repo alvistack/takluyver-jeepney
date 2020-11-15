@@ -41,12 +41,11 @@ print("Match added?", bus_proxy.AddMatch(match_rule) == ())
 print("Trigger a desktop notification (e.g. with notify-send) and then close it")
 
 with connection.filter(match_rule) as queue:
-    while len(queue) == 0:
-        connection.recv_messages()
+    signal_msg = connection.recv_until_filtered(queue)
 
 reasons = {1: 'expiry', 2: 'dismissal', 3: 'dbus', '4': 'undefined'}
 
-nid, reason_no = queue.popleft().body
+nid, reason_no = signal_msg.body
 reason = reasons.get(reason_no, 'unknown')
 print('Notification {} closed by: {}'.format(nid, reason))
 

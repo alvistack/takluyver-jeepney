@@ -28,10 +28,9 @@ with conn.filter(response_rule) as responses:
     conn.send_and_get_reply(req)
 
     # responses is a deque - process messages until one is filtered into it
-    while len(responses) == 0:
-        conn.recv_messages()
+    response_msg = conn.recv_until_filtered(responses)
 
-response, results = responses.popleft().body
+response, results = response_msg.body
 if response == 0:
     # print(results)
     print("Chose file:", results['uris'][1][0])
