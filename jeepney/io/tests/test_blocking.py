@@ -63,12 +63,6 @@ def test_filter(session_conn):
         res, = bus.RequestName(name)
         assert res == 1  # 1: got the name
 
-        for _ in range(5):
-            if len(matches):
-                break
-            session_conn.recv_messages(timeout=1.0)
-        else:
-            raise AssertionError("Expected signal message not received")
+        signal_msg = session_conn.recv_until_filtered(matches, timeout=2)
 
-        signal_msg = matches.popleft()
         assert signal_msg.body == (name, '', session_conn.unique_name)

@@ -39,6 +39,17 @@ class _Future:
         raise value
 
 
+def timeout_to_deadline(timeout):
+    if timeout is not None:
+        return time.monotonic() + timeout
+    return None
+
+def deadline_to_timeout(deadline):
+    if deadline is not None:
+        return deadline - time.monotonic()
+    return None
+
+
 class DBusConnection:
     def __init__(self, sock):
         self.sock = sock
@@ -80,20 +91,14 @@ class DBusConnection:
         Otherwise, it will wait for up to timeout seconds, or indefinitely if
         timeout is None. If no message comes in time, it raises TimeoutError.
         """
-        if timeout is not None:
-            deadline = time.monotonic() + timeout
-        else:
-            deadline = None
+        deadline = timeout_to_deadline(timeout)
 
         while True:
             msg = self.parser.get_next_message()
             if msg is not None:
                 return msg
 
-            if deadline is not None:
-                timeout = deadline - time.monotonic()
-
-            b = self._read_some_data(timeout)
+            b = self._read_some_data(timeout=deadline_to_timeout(deadline))
             self.parser.add_data(b)
 
     def _read_some_data(self, timeout=None):
@@ -120,10 +125,7 @@ class DBusConnection:
         see :meth:`add_filter`.
         """
         check_replyable(message)
-        if timeout is not None:
-            deadline = time.monotonic() + timeout
-        else:
-            deadline = None
+        deadline = timeout_to_deadline(timeout)
 
         if unwrap is None:
             unwrap = self._unwrap_reply
@@ -131,9 +133,7 @@ class DBusConnection:
         serial = next(self.outgoing_serial)
         self.send_message(message, serial=serial)
         while True:
-            if deadline is not None:
-                timeout = deadline - time.monotonic()
-            msg_in = self.receive(timeout=timeout)
+            msg_in = self.receive(timeout=deadline_to_timeout(deadline))
             reply_to = msg_in.header.fields.get(HeaderFields.reply_serial, -1)
             if reply_to == serial:
                 if unwrap:
@@ -152,15 +152,35 @@ class DBusConnection:
 
             with conn.filter(rule) as matches:
                 # matches is a deque containing matched messages
-                while len(matches) == 0:
-                    conn.recv_messages()
-                matching_msg = matches.popleft()
+                matching_msg = conn.recv_until_filtered(matches)
 
         :param jeepney.MatchRule rule: Catch messages matching this rule
         :param collections.deque queue: Matched messages will be added to this
         :param int bufsize: If no deque is passed in, create one with this size
         """
         return FilterHandle(self._filters, rule, queue or deque(maxlen=bufsize))
+
+    def recv_until_filtered(self, queue, *, timeout=None) -> Message:
+        """Process incoming messages until one is filtered into queue
+
+        Pops the message from queue and returns it, or raises TimeoutError if
+        the optional timeout expires. Without a timeout, this is equivalent to::
+
+            while len(queue) == 0:
+                conn.recv_messages()
+            return queue.popleft()
+
+        In the other I/O modules, there is no need for this, because messages
+        are placed in queues by a separate task.
+
+        :param collections.deque queue: A deque connected by :meth:`filter`
+        :param float timeout: Maximum time to wait in seconds
+        """
+        deadline = timeout_to_deadline(timeout)
+        while len(queue) == 0:
+            self.recv_messages(timeout=deadline_to_timeout(deadline))
+        return queue.popleft()
+
 
     def close(self):
         """Close this connection"""

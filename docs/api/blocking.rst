@@ -21,6 +21,8 @@ threads, or you want a nicer way to wait for signals, see :doc:`threading`.
 
    .. automethod:: filter
 
+   .. automethod:: recv_until_filtered
+
    .. automethod:: close
 
       Using ``with open_dbus_connection()`` will also close the connection on
