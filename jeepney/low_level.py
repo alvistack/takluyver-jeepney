@@ -1,3 +1,4 @@
+from collections import deque
 from enum import Enum, IntEnum, IntFlag
 import struct
 from typing import Optional
@@ -430,19 +431,19 @@ class Parser:
     """Parse DBus messages from a stream of incoming data.
     """
     def __init__(self):
-        self.buf = b''
+        self.buf = BufferPipe()
         self.next_msg_size = None
 
     def add_data(self, data: bytes):
         """Provide newly received data to the parser"""
-        self.buf += data
+        self.buf.write(data)
 
     def feed(self, data):
         """Feed the parser newly read data.
 
         Returns a list of messages completed by the new data.
         """
-        self.buf += data
+        self.add_data(data)
         return list(iter(self.get_next_message, None))
 
     def get_next_message(self) -> Optional[Message]:
@@ -451,12 +452,60 @@ class Parser:
         Returns None if it doesn't have a complete message.
         """
         if self.next_msg_size is None:
-            if len(self.buf) >= 16:
-                self.next_msg_size = calc_msg_size(self.buf)
+            if self.buf.bytes_buffered >= 16:
+                self.next_msg_size = calc_msg_size(self.buf.peek(16))
         nms = self.next_msg_size
-        if (nms is not None) and len(self.buf) >= nms:
-            raw_msg, self.buf = self.buf[:nms], self.buf[nms:]
+        if (nms is not None) and self.buf.bytes_buffered >= nms:
+            raw_msg = self.buf.read(nms)
             msg = Message.from_buffer(raw_msg)
             self.next_msg_size = None
             return msg
 
+
+class BufferPipe:
+    """A place to store received data until we can parse a complete message
+
+    The main difference from io.BytesIO is that read & write operate at
+    opposite ends, like a pipe.
+    """
+    def __init__(self):
+        self.chunks = deque()
+        self.bytes_buffered = 0
+
+    def write(self, b: bytes):
+        self.chunks.append(b)
+        self.bytes_buffered += len(b)
+
+    def _peek_iter(self, nbytes: int):
+        assert nbytes <= self.bytes_buffered
+        for chunk in self.chunks:
+            chunk = chunk[:nbytes]
+            nbytes -= len(chunk)
+            yield chunk
+            if nbytes <= 0:
+                break
+
+    def peek(self, nbytes: int) -> bytes:
+        """Get exactly nbytes bytes from the front without removing them"""
+        return b''.join(self._peek_iter(nbytes))
+
+    def _read_iter(self, nbytes: int):
+        assert nbytes <= self.bytes_buffered
+        while True:
+            chunk = self.chunks.popleft()
+            self.bytes_buffered -= len(chunk)
+            if nbytes <= len(chunk):
+                break
+            nbytes -= len(chunk)
+            yield chunk
+
+        # Final chunk
+        chunk, rem = chunk[:nbytes], chunk[nbytes:]
+        if rem:
+            self.chunks.appendleft(rem)
+            self.bytes_buffered += len(rem)
+        yield chunk
+
+    def read(self, nbytes: int) -> bytes:
+        """Take & return exactly nbytes bytes from the front"""
+        return b''.join(self._read_iter(nbytes))
