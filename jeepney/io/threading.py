@@ -129,7 +129,7 @@ def open_dbus_connection(bus='SESSION'):
     sock.sendall(BEGIN)
 
     conn = DBusConnection(sock)
-    conn.parser.buf = auth_parser.buffer
+    conn.parser.add_data(auth_parser.buffer)
 
     with DBusRouter(conn) as router:
         reply_body = Proxy(message_bus, router, timeout=10).Hello()
