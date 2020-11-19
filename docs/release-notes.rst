@@ -1,6 +1,15 @@
 Release notes
 =============
 
+0.6
+---
+
+* New method :meth:`~.blocking.DBusConnection.recv_until_filtered` in the
+  blocking I/O integration to receive messages until one is filtered into a
+  queue.
+* More efficient buffering of received data waiting to be parsed into D-Bus
+  messages.
+
 0.5
 ---
 
