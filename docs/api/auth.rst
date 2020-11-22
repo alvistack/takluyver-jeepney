@@ -22,14 +22,12 @@ implement other messages yourself.
 .. autofunction:: make_auth_anonymous
 
 .. data:: BEGIN
-   :type: bytes
 
    Send this just before switching to the D-Bus protocol.
 
 .. autoclass:: SASLParser
 
    .. attribute:: authenticated
-      :type: bool
 
       Initially False, changes to True when authentication has succeeded.
 

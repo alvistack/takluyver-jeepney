@@ -82,23 +82,19 @@ Message objects
       :class:`MessageFlag` object.
 
    .. attribute:: protocol_version
-      :type: int
 
       Currently always 1.
 
    .. attribute:: body_length
-      :type: int
 
       The length of the raw message body in bytes.
 
    .. attribute:: serial
-      :type: int
 
       Sender's serial number for this message. This is not necessarily set
       for outgoing messages - see :meth:`Message.serialise`.
 
    .. attribute:: fields
-      :type: dict
 
       Mapping of :class:`HeaderFields` values to the relevant Python objects.
 
@@ -110,12 +106,10 @@ Exceptions
 .. autoexception:: DBusErrorResponse
 
    .. attribute:: name
-      :type: str
 
       The error name from the remote end.
 
    .. attribute:: body
-      :type: tuple
 
       Any data fields contained in the error message.
 
