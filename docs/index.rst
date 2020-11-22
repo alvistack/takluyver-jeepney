@@ -21,10 +21,10 @@ Contents:
    :maxdepth: 2
 
    integrate
-   limitations
    messages
    bindgen
    api/index
+   design
    release-notes
 
 .. seealso::
