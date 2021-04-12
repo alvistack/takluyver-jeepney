@@ -37,17 +37,20 @@ class SASLParser:
     def __init__(self):
         self.buffer = b''
         self.authenticated = False
+        self.unix_fds = False
         self.error = None
 
     def process_line(self, line):
         if line.startswith(b'OK '):
             self.authenticated = True
+        elif self.authenticated and line.startswith(b'AGREE_UNIX_FD'):
+            self.unix_fds = True
         else:
             self.error = line
 
     def feed(self, data: bytes):
         """Process received data"""
         self.buffer += data
-        while (b'\r\n' in self.buffer) and not self.authenticated:
+        while b'\r\n' in self.buffer:
             line, self.buffer = self.buffer.split(b'\r\n', 1)
             self.process_line(line)

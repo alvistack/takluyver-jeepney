@@ -101,3 +101,18 @@ class WrappedFD:
                 # Append data, ignoring any truncated integers at the end.
                 fds.frombytes(data[:len(data) - (len(data) % fds.itemsize)])
         return [cls(i) for i in fds]
+
+
+_fds_buf_size_cache = None
+
+def fds_buf_size():
+    # If there may be file descriptors, we try to read 1 message at a time.
+    # The reference implementation of D-Bus defaults to allowing 16 FDs per
+    # message, and the Linux kernel currently allows 253 FDs per sendmsg()
+    # call. So hopefully allowing 256 FDs per recvmsg() will always suffice.
+    global _fds_buf_size_cache
+    if _fds_buf_size_cache is None:
+        maxfds = 256
+        fd_size = array.array('i').itemsize
+        _fds_buf_size_cache = socket.CMSG_SPACE(maxfds * fd_size)
+    return _fds_buf_size_cache

@@ -1,5 +1,6 @@
 """Synchronous IO wrappers around jeepney
 """
+import array
 from collections import deque
 from errno import ECONNRESET
 import functools
@@ -13,6 +14,7 @@ from typing import Optional
 from jeepney import Parser, Message, MessageType, HeaderFields
 from jeepney.auth import SASLParser, make_auth_external, BEGIN, AuthenticationError
 from jeepney.bus import get_bus
+from jeepney.fds import WrappedFD, fds_buf_size
 from jeepney.wrappers import ProxyBase, unwrap_msg
 from jeepney.routing import Router
 from jeepney.bus_messages import message_bus
@@ -51,8 +53,9 @@ def deadline_to_timeout(deadline):
 
 
 class DBusConnection:
-    def __init__(self, sock):
+    def __init__(self, sock: socket.socket, enable_fds=False):
         self.sock = sock
+        self.enable_fds = enable_fds
         self.parser = Parser()
         self.outgoing_serial = count(start=1)
         self.selector = DefaultSelector()
@@ -79,10 +82,23 @@ class DBusConnection:
         """Serialise and send a :class:`~.Message` object"""
         if serial is None:
             serial = next(self.outgoing_serial)
-        data = message.serialise(serial=serial)
-        self.sock.sendall(data)
+        fds = array.array('i') if self.enable_fds else None
+        data = message.serialise(serial=serial, fds=fds)
+        if fds:
+            self._send_with_fds(data, fds)
+        else:
+            self.sock.sendall(data)
 
     send_message = send  # Backwards compatibility
+
+    def _send_with_fds(self, data, fds):
+        bytes_sent = self.sock.sendmsg(
+            [data], [(socket.SOL_SOCKET, socket.SCM_RIGHTS, fds)]
+        )
+        # If sendmsg succeeds, I think ancillary data has been sent atomically?
+        # So now we just need to send any leftover normal data.
+        if bytes_sent < len(data):
+            self.sock.sendall(data[bytes_sent:])
 
     def receive(self, *, timeout=None) -> Message:
         """Return the next available message from the connection
@@ -98,15 +114,26 @@ class DBusConnection:
             if msg is not None:
                 return msg
 
-            b = self._read_some_data(timeout=deadline_to_timeout(deadline))
-            self.parser.add_data(b)
+            b, fds = self._read_some_data(timeout=deadline_to_timeout(deadline))
+            self.parser.add_data(b, fds=fds)
 
     def _read_some_data(self, timeout=None):
         for key, ev in self.selector.select(timeout):
             if key == self.select_key:
-                return unwrap_read(self.sock.recv(4096))
+                if self.enable_fds:
+                    return self._read_with_fds()
+                else:
+                    return unwrap_read(self.sock.recv(4096)), []
 
         raise TimeoutError
+
+    def _read_with_fds(self):
+        nbytes = self.parser.bytes_desired()
+        data, ancdata, flags, _ = self.sock.recvmsg(nbytes, fds_buf_size())
+        if flags & getattr(socket, 'MSG_CTRUNC', 0):
+            self.close()
+            raise RuntimeError("Unable to receive all file descriptors")
+        return unwrap_read(data), WrappedFD.from_ancdata(ancdata)
 
     def recv_messages(self, *, timeout=None):
         """Receive one message and apply filters
@@ -238,8 +265,13 @@ def unwrap_read(b):
     return b
 
 
-def open_dbus_connection(bus='SESSION') -> DBusConnection:
-    """Connect to a D-Bus message bus"""
+def open_dbus_connection(bus='SESSION', enable_fds=False) -> DBusConnection:
+    """Connect to a D-Bus message bus
+
+    Pass enable_fds=True to allow sending & receiving file descriptors.
+    An error will be raised if the bus does not allow this. For simplicity,
+    it's advisable to leave this disabled unless you need it.
+    """
     bus_addr = get_bus(bus)
     sock = socket.socket(family=socket.AF_UNIX)
     sock.connect(bus_addr)
@@ -250,9 +282,16 @@ def open_dbus_connection(bus='SESSION') -> DBusConnection:
         if auth_parser.error:
             raise AuthenticationError(auth_parser.error)
 
+    if enable_fds:
+        sock.sendall(b'NEGOTIATE_UNIX_FD\r\n')
+        while not auth_parser.unix_fds:
+            auth_parser.feed(unwrap_read(sock.recv(1024)))
+            if auth_parser.error:
+                raise AuthenticationError(auth_parser.error)
+
     sock.sendall(BEGIN)
 
-    conn = DBusConnection(sock)
+    conn = DBusConnection(sock, enable_fds)
     conn.parser.add_data(auth_parser.buffer)
     return conn
 
