@@ -1,3 +1,4 @@
+import array
 from concurrent.futures import Future
 from contextlib import contextmanager
 import functools
@@ -10,14 +11,24 @@ from threading import Lock, Thread
 import time
 from typing import Optional
 
-from jeepney import HeaderFields, Message, MessageType, Parser
+from jeepney import Message, MessageType, Parser
 from jeepney.bus import get_bus
 from jeepney.bus_messages import message_bus
+from jeepney.fds import WrappedFD, fds_buf_size
 from jeepney.wrappers import ProxyBase, unwrap_msg
 from .blocking import unwrap_read, prep_socket
 from .common import (
     MessageFilters, FilterHandle, ReplyMatcher, RouterClosed, check_replyable,
 )
+
+__all__ = [
+    'open_dbus_connection',
+    'open_dbus_router',
+    'DBusConnection',
+    'DBusRouter',
+    'Proxy',
+    'ReceiveStopped',
+]
 
 
 class ReceiveStopped(Exception):
@@ -25,8 +36,9 @@ class ReceiveStopped(Exception):
 
 
 class DBusConnection:
-    def __init__(self, sock):
+    def __init__(self, sock: socket.socket, enable_fds=False):
         self.sock = sock
+        self.enable_fds = enable_fds
         self.parser = Parser()
         self.outgoing_serial = count(start=1)
         self.selector = DefaultSelector()
@@ -48,9 +60,21 @@ class DBusConnection:
         """Serialise and send a :class:`~.Message` object"""
         if serial is None:
             serial = next(self.outgoing_serial)
-        data = message.serialise(serial=serial)
-        with self.send_lock:
+        fds = array.array('i') if self.enable_fds else None
+        data = message.serialise(serial=serial, fds=fds)
+        if fds:
+            self._send_with_fds(data, fds)
+        else:
             self.sock.sendall(data)
+
+    def _send_with_fds(self, data, fds):
+        bytes_sent = self.sock.sendmsg(
+            [data], [(socket.SOL_SOCKET, socket.SCM_RIGHTS, fds)]
+        )
+        # If sendmsg succeeds, I think ancillary data has been sent atomically?
+        # So now we just need to send any leftover normal data.
+        if bytes_sent < len(data):
+            self.sock.sendall(data[bytes_sent:])
 
     def receive(self, *, timeout=None) -> Message:
         """Return the next available message from the connection
@@ -76,18 +100,29 @@ class DBusConnection:
                 if deadline is not None:
                     timeout = deadline - time.monotonic()
 
-                b = self._read_some_data(timeout)
-                self.parser.add_data(b)
+                b, fds = self._read_some_data(timeout)
+                self.parser.add_data(b, fds=fds)
 
     def _read_some_data(self, timeout=None):
         # Wait for data or a signal on the stop pipe
         for key, ev in self.selector.select(timeout):
             if key == self.select_key:
-                return unwrap_read(self.sock.recv(4096))
+                if self.enable_fds:
+                    return self._read_with_fds()
+                else:
+                    return unwrap_read(self.sock.recv(4096)), []
             elif key == self.stop_key:
                 raise ReceiveStopped("DBus receive stopped from another thread")
 
         raise TimeoutError
+
+    def _read_with_fds(self):
+        nbytes = self.parser.bytes_desired()
+        data, ancdata, flags, _ = self.sock.recvmsg(nbytes, fds_buf_size())
+        if flags & getattr(socket, 'MSG_CTRUNC', 0):
+            self.close()
+            raise RuntimeError("Unable to receive all file descriptors")
+        return unwrap_read(data), WrappedFD.from_ancdata(ancdata)
 
     def interrupt(self):
         """Make any threads waiting for a message raise ReceiveStopped"""
@@ -110,7 +145,7 @@ class DBusConnection:
         self.sock.close()
 
 
-def open_dbus_connection(bus='SESSION', auth_timeout=1.):
+def open_dbus_connection(bus='SESSION', enable_fds=False, auth_timeout=1.):
     """Open a plain D-Bus connection
 
     D-Bus has an authentication step before sending or receiving messages.
@@ -121,9 +156,9 @@ def open_dbus_connection(bus='SESSION', auth_timeout=1.):
     :return: :class:`DBusConnection`
     """
     bus_addr = get_bus(bus)
-    sock = prep_socket(bus_addr, timeout=auth_timeout)
+    sock = prep_socket(bus_addr, enable_fds, timeout=auth_timeout)
 
-    conn = DBusConnection(sock)
+    conn = DBusConnection(sock, enable_fds)
 
     with DBusRouter(conn) as router:
         reply_body = Proxy(message_bus, router, timeout=10).Hello()
@@ -260,7 +295,7 @@ class Proxy(ProxyBase):
         return inner
 
 @contextmanager
-def open_dbus_router(bus='SESSION'):
+def open_dbus_router(bus='SESSION', enable_fds=False):
     """Open a D-Bus 'router' to send and receive messages.
 
     Use as a context manager::
@@ -271,8 +306,9 @@ def open_dbus_router(bus='SESSION'):
     On leaving the ``with`` block, the connection will be closed.
 
     :param str bus: 'SESSION' or 'SYSTEM' or a supported address.
+    :param bool enable_fds: Whether to enable passing file descriptors.
     :return: :class:`DBusRouter`
     """
-    with open_dbus_connection(bus=bus) as conn:
+    with open_dbus_connection(bus=bus, enable_fds=enable_fds) as conn:
         with DBusRouter(conn) as router:
             yield router
