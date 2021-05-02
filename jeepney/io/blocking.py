@@ -12,13 +12,19 @@ import time
 from typing import Optional
 
 from jeepney import Parser, Message, MessageType, HeaderFields
-from jeepney.auth import SASLParser, make_auth_external, BEGIN, AuthenticationError
+from jeepney.auth import Authenticator, BEGIN
 from jeepney.bus import get_bus
 from jeepney.fds import WrappedFD, fds_buf_size
 from jeepney.wrappers import ProxyBase, unwrap_msg
 from jeepney.routing import Router
 from jeepney.bus_messages import message_bus
 from .common import MessageFilters, FilterHandle, check_replyable
+
+__all__ = [
+    'open_dbus_connection',
+    'DBusConnection',
+    'Proxy',
+]
 
 
 class _Future:
@@ -48,7 +54,7 @@ def timeout_to_deadline(timeout):
 
 def deadline_to_timeout(deadline):
     if deadline is not None:
-        return deadline - time.monotonic()
+        return max(deadline - time.monotonic(), 0.)
     return None
 
 
@@ -265,34 +271,54 @@ def unwrap_read(b):
     return b
 
 
-def open_dbus_connection(bus='SESSION', enable_fds=False) -> DBusConnection:
+def prep_socket(addr, enable_fds=False, timeout=2.0) -> socket.socket:
+    """Create a socket and authenticate ready to send D-Bus messages"""
+    sock = socket.socket(family=socket.AF_UNIX)
+
+    # To impose the overall auth timeout, we'll update the timeout on the socket
+    # before each send/receive. This is ugly, but we can't use the socket for
+    # anything else until this has succeeded, so this should be safe.
+    deadline = timeout_to_deadline(timeout)
+    def with_sock_deadline(meth, *args):
+        sock.settimeout(deadline_to_timeout(deadline))
+        return meth(*args)
+
+    try:
+        with_sock_deadline(sock.connect, addr)
+        authr = Authenticator(enable_fds=enable_fds)
+        for req_data in authr:
+            with_sock_deadline(sock.sendall, req_data)
+            authr.feed(unwrap_read(with_sock_deadline(sock.recv, 1024)))
+        with_sock_deadline(sock.sendall, BEGIN)
+    except socket.timeout as e:
+        sock.close()
+        raise TimeoutError(f"Did not authenticate in {timeout} seconds") from e
+    except:
+        sock.close()
+        raise
+
+    sock.settimeout(None)  # Put the socket back in blocking mode
+    return sock
+
+
+def open_dbus_connection(
+        bus='SESSION', enable_fds=False, auth_timeout=1.,
+) -> DBusConnection:
     """Connect to a D-Bus message bus
 
-    Pass enable_fds=True to allow sending & receiving file descriptors.
+    Pass ``enable_fds=True`` to allow sending & receiving file descriptors.
     An error will be raised if the bus does not allow this. For simplicity,
     it's advisable to leave this disabled unless you need it.
+
+    D-Bus has an authentication step before sending or receiving messages.
+    This takes < 1 ms in normal operation, but there is a timeout so that client
+    code won't get stuck if the server doesn't reply. *auth_timeout* configures
+    this timeout in seconds.
     """
     bus_addr = get_bus(bus)
-    sock = socket.socket(family=socket.AF_UNIX)
-    sock.connect(bus_addr)
-    sock.sendall(b'\0' + make_auth_external())
-    auth_parser = SASLParser()
-    while not auth_parser.authenticated:
-        auth_parser.feed(unwrap_read(sock.recv(1024)))
-        if auth_parser.error:
-            raise AuthenticationError(auth_parser.error)
-
-    if enable_fds:
-        sock.sendall(b'NEGOTIATE_UNIX_FD\r\n')
-        while not auth_parser.unix_fds:
-            auth_parser.feed(unwrap_read(sock.recv(1024)))
-            if auth_parser.error:
-                raise AuthenticationError(auth_parser.error)
-
-    sock.sendall(BEGIN)
+    sock = prep_socket(bus_addr, enable_fds, timeout=auth_timeout)
 
     conn = DBusConnection(sock, enable_fds)
-    conn.parser.add_data(auth_parser.buffer)
     return conn
 
 

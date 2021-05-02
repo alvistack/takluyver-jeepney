@@ -1,3 +1,5 @@
+import pytest
+
 from jeepney import auth
 
 def test_make_auth_external():
@@ -17,5 +19,6 @@ def test_parser():
 
 def test_parser_rejected():
     p = auth.SASLParser()
-    p.feed(b'REJECTED EXTERNAL\r\n')
+    with pytest.raises(auth.AuthenticationError):
+        p.feed(b'REJECTED EXTERNAL\r\n')
     assert not p.authenticated

@@ -11,11 +11,10 @@ import time
 from typing import Optional
 
 from jeepney import HeaderFields, Message, MessageType, Parser
-from jeepney.auth import AuthenticationError, BEGIN, make_auth_external, SASLParser
 from jeepney.bus import get_bus
 from jeepney.bus_messages import message_bus
 from jeepney.wrappers import ProxyBase, unwrap_msg
-from .blocking import unwrap_read
+from .blocking import unwrap_read, prep_socket
 from .common import (
     MessageFilters, FilterHandle, ReplyMatcher, RouterClosed, check_replyable,
 )
@@ -111,25 +110,20 @@ class DBusConnection:
         self.sock.close()
 
 
-def open_dbus_connection(bus='SESSION'):
+def open_dbus_connection(bus='SESSION', auth_timeout=1.):
     """Open a plain D-Bus connection
+
+    D-Bus has an authentication step before sending or receiving messages.
+    This takes < 1 ms in normal operation, but there is a timeout so that client
+    code won't get stuck if the server doesn't reply. *auth_timeout* configures
+    this timeout in seconds.
 
     :return: :class:`DBusConnection`
     """
     bus_addr = get_bus(bus)
-    sock = socket.socket(family=socket.AF_UNIX)
-    sock.connect(bus_addr)
-    sock.sendall(b'\0' + make_auth_external())
-    auth_parser = SASLParser()
-    while not auth_parser.authenticated:
-        auth_parser.feed(unwrap_read(sock.recv(1024)))
-        if auth_parser.error:
-            raise AuthenticationError(auth_parser.error)
-
-    sock.sendall(BEGIN)
+    sock = prep_socket(bus_addr, timeout=auth_timeout)
 
     conn = DBusConnection(sock)
-    conn.parser.add_data(auth_parser.buffer)
 
     with DBusRouter(conn) as router:
         reply_body = Proxy(message_bus, router, timeout=10).Hello()

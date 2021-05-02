@@ -7,7 +7,7 @@ from outcome import Value, Error
 import trio
 from trio.abc import Channel
 
-from jeepney.auth import SASLParser, make_auth_external, BEGIN, AuthenticationError
+from jeepney.auth import Authenticator, BEGIN
 from jeepney.bus import get_bus
 from jeepney.low_level import Parser, MessageType, Message
 from jeepney.wrappers import ProxyBase, unwrap_msg
@@ -87,20 +87,14 @@ async def open_dbus_connection(bus='SESSION') -> DBusConnection:
     bus_addr = get_bus(bus)
     sock : trio.SocketStream = await trio.open_unix_socket(bus_addr)
 
-    # Authentication flow
-    await sock.send_all(b'\0' + make_auth_external())
-    auth_parser = SASLParser()
-    while not auth_parser.authenticated:
-        b = await sock.receive_some()
-        auth_parser.feed(b)
-        if auth_parser.error:
-            raise AuthenticationError(auth_parser.error)
-
+    # Authentication
+    authr = Authenticator()
+    for req_data in authr:
+        await sock.send_all(req_data)
+        authr.feed(await sock.receive_some())
     await sock.send_all(BEGIN)
-    # Authentication finished
 
     conn = DBusConnection(sock)
-    conn.parser.add_data(auth_parser.buffer)
 
     # Say *Hello* to the message bus - this must be the first message, and the
     # reply gives us our unique name.
