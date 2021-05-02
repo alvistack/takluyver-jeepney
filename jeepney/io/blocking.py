@@ -58,7 +58,8 @@ def deadline_to_timeout(deadline):
     return None
 
 
-class DBusConnection:
+class DBusConnectionBase:
+    """Connection machinery shared by this module and threading"""
     def __init__(self, sock: socket.socket, enable_fds=False):
         self.sock = sock
         self.enable_fds = enable_fds
@@ -66,16 +67,7 @@ class DBusConnection:
         self.outgoing_serial = count(start=1)
         self.selector = DefaultSelector()
         self.select_key = self.selector.register(sock, EVENT_READ)
-        self._unwrap_reply = False
-
-        # Message routing machinery
-        self.router = Router(_Future)  # Old interface, for backwards compat
-        self._filters = MessageFilters()
-
-        # Say Hello, get our unique name
-        self.bus_proxy = Proxy(message_bus, self)
-        hello_reply = self.bus_proxy.Hello()
-        self.unique_name = hello_reply[0]
+        self.unique_name = None
 
     def __enter__(self):
         return self
@@ -84,18 +76,12 @@ class DBusConnection:
         self.close()
         return False
 
-    def send(self, message: Message, serial=None):
-        """Serialise and send a :class:`~.Message` object"""
+    def _serialise(self, message: Message, serial) -> (bytes, Optional[array.array]):
         if serial is None:
             serial = next(self.outgoing_serial)
         fds = array.array('i') if self.enable_fds else None
         data = message.serialise(serial=serial, fds=fds)
-        if fds:
-            self._send_with_fds(data, fds)
-        else:
-            self.sock.sendall(data)
-
-    send_message = send  # Backwards compatibility
+        return data, fds
 
     def _send_with_fds(self, data, fds):
         bytes_sent = self.sock.sendmsg(
@@ -106,15 +92,7 @@ class DBusConnection:
         if bytes_sent < len(data):
             self.sock.sendall(data[bytes_sent:])
 
-    def receive(self, *, timeout=None) -> Message:
-        """Return the next available message from the connection
-
-        If the data is ready, this will return immediately, even if timeout<=0.
-        Otherwise, it will wait for up to timeout seconds, or indefinitely if
-        timeout is None. If no message comes in time, it raises TimeoutError.
-        """
-        deadline = timeout_to_deadline(timeout)
-
+    def _receive(self, deadline):
         while True:
             msg = self.parser.get_next_message()
             if msg is not None:
@@ -140,6 +118,45 @@ class DBusConnection:
             self.close()
             raise RuntimeError("Unable to receive all file descriptors")
         return unwrap_read(data), WrappedFD.from_ancdata(ancdata)
+
+    def close(self):
+        """Close the connection"""
+        self.selector.close()
+        self.sock.close()
+
+
+class DBusConnection(DBusConnectionBase):
+    def __init__(self, sock: socket.socket, enable_fds=False):
+        super().__init__(sock, enable_fds)
+        self._unwrap_reply = False
+
+        # Message routing machinery
+        self.router = Router(_Future)  # Old interface, for backwards compat
+        self._filters = MessageFilters()
+
+        # Say Hello, get our unique name
+        self.bus_proxy = Proxy(message_bus, self)
+        hello_reply = self.bus_proxy.Hello()
+        self.unique_name = hello_reply[0]
+
+    def send(self, message: Message, serial=None):
+        """Serialise and send a :class:`~.Message` object"""
+        data, fds = self._serialise(message, serial)
+        if fds:
+            self._send_with_fds(data, fds)
+        else:
+            self.sock.sendall(data)
+
+    send_message = send  # Backwards compatibility
+
+    def receive(self, *, timeout=None) -> Message:
+        """Return the next available message from the connection
+
+        If the data is ready, this will return immediately, even if timeout<=0.
+        Otherwise, it will wait for up to timeout seconds, or indefinitely if
+        timeout is None. If no message comes in time, it raises TimeoutError.
+        """
+        return self._receive(timeout_to_deadline(timeout))
 
     def recv_messages(self, *, timeout=None):
         """Receive one message and apply filters
@@ -214,11 +231,6 @@ class DBusConnection:
             self.recv_messages(timeout=deadline_to_timeout(deadline))
         return queue.popleft()
 
-
-    def close(self):
-        """Close this connection"""
-        self.selector.close()
-        self.sock.close()
 
 class Proxy(ProxyBase):
     """A blocking proxy for calling D-Bus methods

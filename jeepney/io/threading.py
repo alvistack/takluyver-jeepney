@@ -1,22 +1,22 @@
-import array
+"""Synchronous IO wrappers with thread safety
+"""
 from concurrent.futures import Future
 from contextlib import contextmanager
 import functools
-from itertools import count
 import os
-from selectors import DefaultSelector, EVENT_READ
+from selectors import EVENT_READ
 import socket
 from queue import Queue, Full as QueueFull
 from threading import Lock, Thread
-import time
 from typing import Optional
 
-from jeepney import Message, MessageType, Parser
+from jeepney import Message, MessageType
 from jeepney.bus import get_bus
 from jeepney.bus_messages import message_bus
-from jeepney.fds import WrappedFD, fds_buf_size
 from jeepney.wrappers import ProxyBase, unwrap_msg
-from .blocking import unwrap_read, prep_socket
+from .blocking import (
+    unwrap_read, prep_socket, DBusConnectionBase, timeout_to_deadline,
+)
 from .common import (
     MessageFilters, FilterHandle, ReplyMatcher, RouterClosed, check_replyable,
 )
@@ -35,46 +35,22 @@ class ReceiveStopped(Exception):
     pass
 
 
-class DBusConnection:
+class DBusConnection(DBusConnectionBase):
     def __init__(self, sock: socket.socket, enable_fds=False):
-        self.sock = sock
-        self.enable_fds = enable_fds
-        self.parser = Parser()
-        self.outgoing_serial = count(start=1)
-        self.selector = DefaultSelector()
-        self.select_key = self.selector.register(sock, EVENT_READ)
+        super().__init__(sock, enable_fds=enable_fds)
         self._stop_r, self._stop_w = os.pipe()
         self.stop_key = self.selector.register(self._stop_r, EVENT_READ)
         self.send_lock = Lock()
         self.rcv_lock = Lock()
-        self.unique_name = None
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        self.close()
-        return False
 
     def send(self, message: Message, serial=None):
         """Serialise and send a :class:`~.Message` object"""
-        if serial is None:
-            serial = next(self.outgoing_serial)
-        fds = array.array('i') if self.enable_fds else None
-        data = message.serialise(serial=serial, fds=fds)
-        if fds:
-            self._send_with_fds(data, fds)
-        else:
-            self.sock.sendall(data)
-
-    def _send_with_fds(self, data, fds):
-        bytes_sent = self.sock.sendmsg(
-            [data], [(socket.SOL_SOCKET, socket.SCM_RIGHTS, fds)]
-        )
-        # If sendmsg succeeds, I think ancillary data has been sent atomically?
-        # So now we just need to send any leftover normal data.
-        if bytes_sent < len(data):
-            self.sock.sendall(data[bytes_sent:])
+        data, fds = self._serialise(message, serial)
+        with self.send_lock:
+            if fds:
+                self._send_with_fds(data, fds)
+            else:
+                self.sock.sendall(data)
 
     def receive(self, *, timeout=None) -> Message:
         """Return the next available message from the connection
@@ -86,22 +62,14 @@ class DBusConnection:
         If the connection is closed from another thread, this will raise
         ReceiveStopped.
         """
-        if timeout is not None:
-            deadline = time.monotonic() + timeout
-        else:
-            deadline = None
+        deadline = timeout_to_deadline(timeout)
 
-        with self.rcv_lock:
-            while True:
-                msg = self.parser.get_next_message()
-                if msg is not None:
-                    return msg
-
-                if deadline is not None:
-                    timeout = deadline - time.monotonic()
-
-                b, fds = self._read_some_data(timeout)
-                self.parser.add_data(b, fds=fds)
+        if not self.rcv_lock.acquire(timeout=(timeout or -1)):
+            raise TimeoutError(f"Did not get receive lock in {timeout} seconds")
+        try:
+            return self._receive(deadline)
+        finally:
+            self.rcv_lock.release()
 
     def _read_some_data(self, timeout=None):
         # Wait for data or a signal on the stop pipe
@@ -115,14 +83,6 @@ class DBusConnection:
                 raise ReceiveStopped("DBus receive stopped from another thread")
 
         raise TimeoutError
-
-    def _read_with_fds(self):
-        nbytes = self.parser.bytes_desired()
-        data, ancdata, flags, _ = self.sock.recvmsg(nbytes, fds_buf_size())
-        if flags & getattr(socket, 'MSG_CTRUNC', 0):
-            self.close()
-            raise RuntimeError("Unable to receive all file descriptors")
-        return unwrap_read(data), WrappedFD.from_ancdata(ancdata)
 
     def interrupt(self):
         """Make any threads waiting for a message raise ReceiveStopped"""
@@ -141,8 +101,7 @@ class DBusConnection:
     def close(self):
         """Close the connection"""
         self.interrupt()
-        self.selector.close()
-        self.sock.close()
+        super().close()
 
 
 def open_dbus_connection(bus='SESSION', enable_fds=False, auth_timeout=1.):
