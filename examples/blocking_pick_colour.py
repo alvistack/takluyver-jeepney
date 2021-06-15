@@ -48,7 +48,7 @@ ri, gi, bi = round(rf * 255), round(gf * 255), round(bf * 255)
 
 print(f"RGB (0-1)  : ({rf:.5f}, {gf:.5f}, {bf:.5f})")
 print(f"RGB (0-255): {ri, gi, bi}")
-print(f"Hex code   : #{ri:X}{gi:X}{bi:02X}")
+print(f"Hex code   : #{ri:02X}{gi:02X}{bi:02X}")
 print(f"Preview    : \x1b[48;2;{ri};{gi};{bi}m            \x1b[0m")
 # The line above assumes our terminal supports 24-bit colour:
 # https://en.wikipedia.org/wiki/ANSI_escape_code#24-bit
