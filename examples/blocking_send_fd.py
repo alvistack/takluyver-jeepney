@@ -1,6 +1,6 @@
 """Demonstrate sending a file descriptor
 
-Start blocking_recv_fd.py first, then run this.
+Start one of the _recv_fd.py scripts first, then run this.
 
 Make a writable temporary file, send its file descriptor. The other process
 writes into it before replying. This process can read what was written.

@@ -23,6 +23,10 @@ test = [
     "testpath",
     "trio",
 ]
+trio = [
+    "trio",
+    "async_generator; python_version == '3.6'",
+]
 
 [tool.flit.metadata.urls]
 Documentation = "https://jeepney.readthedocs.io/en/latest/"

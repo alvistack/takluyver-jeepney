@@ -1,6 +1,6 @@
 """Demonstrate receiving a file descriptor
 
-Start this, and then run blocking_send_fd.py to send a request.
+Start this, and then run one of the _send_fd.py scripts to send requests.
 """
 from datetime import datetime
 
