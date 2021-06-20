@@ -69,3 +69,22 @@ Let's rewrite the example above to use a message generator and a proxy:
 
 This is more code for the simple use case here, but in a larger application
 collecting the message definitions together like this could make it clearer.
+
+.. _send_recv_fds:
+
+Sending & receiving file descriptors
+------------------------------------
+
+D-Bus allows sending file descriptors - references to open files, sockets, etc.
+To use this, use the blocking, multi-threading or Trio integration and enable it
+(``enable_fds=True``) when connecting to D-Bus. If you enable it but the message
+bus refuses support, :exc:`.FDNegotiationError` will be raised.
+
+To send a file descriptor, pass any object with a ``.fileno()`` method, such as
+an open file or socket, or a suitable integer. The file descriptor must not be
+closed before the message is sent.
+
+Received file descriptors will be returned as a :class:`.WrappedFD` object
+to help avoid leaking FDs. They can easily be converted to a file object
+(:meth:`~.WrappedFD.to_file`), a socket (:meth:`~.WrappedFD.to_socket`) or a
+plain integer (:meth:`~.WrappedFD.to_raw_fd`).

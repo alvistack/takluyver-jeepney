@@ -7,7 +7,9 @@ class WrappedFD:
     """A file descriptor received in a D-Bus message
 
     This wrapper helps ensure that the file descriptor is closed exactly once.
-    You can convert it into a file or socket object.
+    If you don't explicitly convert or close the WrappedFD object, it will
+    close its file descriptor when it goes out of scope, and emit a
+    ResourceWarning.
     """
     __slots__ = ('_fd',)
     _CLOSED = -1
@@ -30,8 +32,8 @@ class WrappedFD:
         This can safely be called multiple times, but will raise RuntimeError
         if called after converting it with one of the ``to_*`` methods.
 
-        This object can also be used in a ``with`` block, and then leaving the
-        block closes it.
+        This object can also be used in a ``with`` block, to close it on
+        leaving the block.
         """
         if self._fd == self._CLOSED:
             pass
@@ -86,7 +88,7 @@ class WrappedFD:
     def to_socket(self):
         """Convert to a socket object
 
-        This returns a standard library :class:`socket.socket` object.
+        This returns a standard library :func:`socket.socket` object.
 
         The wrapper object can't be used after calling this. Closing the socket
         object will also close the file descriptor.

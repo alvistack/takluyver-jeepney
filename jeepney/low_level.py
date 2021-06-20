@@ -448,6 +448,11 @@ class Message:
 
         Specifying *serial* overrides the ``msg.header.serial`` field, so a
         connection can use its own serial number without modifying the message.
+
+        If file-descriptor support is in use, *fds* should be a
+        :class:`array.array` object with type ``'i'``. Any file descriptors in
+        the message will be added to the array. If the message contains FDs,
+        it can't be serialised without this array.
         """
         endian = self.header.endianness
 
