@@ -68,15 +68,20 @@ class WrappedFD:
         self._fd, fd = self._CONVERTED, self._fd
         return fd
 
-    def to_file(self, mode, encoding=None, errors=None):
+    def to_file(self, mode, buffering=-1, encoding=None, errors=None, newline=None):
         """Convert to a Python file object
 
-        The arguments are as passed to open().
+        The arguments are the same as for the builtin :func:`open` function.
 
         The wrapper object can't be used after calling this. Closing the file
         object will also close the file descriptor.
         """
-        return open(self.to_raw_fd(), mode, encoding=encoding, errors=errors)
+        f = open(
+            self._fd, mode, buffering=buffering,
+            encoding=encoding, errors=errors, newline=newline
+        )
+        self._fd = self._CONVERTED
+        return f
 
     def to_socket(self):
         """Convert to a socket object
@@ -87,7 +92,9 @@ class WrappedFD:
         object will also close the file descriptor.
         """
         from socket import socket
-        return socket(fileno=self.to_raw_fd())
+        s = socket(fileno=self._fd)
+        self._fd = self._CONVERTED
+        return s
 
     @classmethod
     def from_ancdata(cls, ancdata) -> ['WrappedFD']:
