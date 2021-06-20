@@ -114,6 +114,9 @@ class FileDescriptor(FixedType):
             raise TypeError("Cannot use {data!r} as file descriptor. Expected "
                             "an int or an object with fileno() method")
 
+        if data < 0:
+            raise ValueError(f"File descriptor can't be negative ({data})")
+
         fds.append(data)
         return super().serialise(len(fds) - 1, pos, endianness)
 
