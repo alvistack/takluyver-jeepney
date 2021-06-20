@@ -3,6 +3,11 @@ import os
 import socket
 from warnings import warn
 
+
+class NoFDError(RuntimeError):
+    pass
+
+
 class WrappedFD:
     """A file descriptor received in a D-Bus message
 
@@ -38,7 +43,7 @@ class WrappedFD:
         if self._fd == self._CLOSED:
             pass
         elif self._fd == self._CONVERTED:
-            raise RuntimeError("Can't close WrappedFD after converting it")
+            raise NoFDError("Can't close WrappedFD after converting it")
         else:
             self._fd, fd = self._CLOSED, self._fd
             os.close(fd)
@@ -57,8 +62,14 @@ class WrappedFD:
             )
             self.close()
 
+    def _check(self):
+        if self._fd < 0:
+            detail = 'closed' if self._fd == self._CLOSED else 'converted'
+            raise NoFDError(f'WrappedFD object was already {detail}')
+
     def fileno(self):
         """Get the integer file descriptor, without affecting the wrapper"""
+        self._check()
         return self._fd
 
     def to_raw_fd(self):
@@ -67,6 +78,7 @@ class WrappedFD:
         The wrapper object can't be used after calling this. The caller is
         responsible for closing the file descriptor.
         """
+        self._check()
         self._fd, fd = self._CONVERTED, self._fd
         return fd
 
@@ -78,6 +90,7 @@ class WrappedFD:
         The wrapper object can't be used after calling this. Closing the file
         object will also close the file descriptor.
         """
+        self._check()
         f = open(
             self._fd, mode, buffering=buffering,
             encoding=encoding, errors=errors, newline=newline
@@ -94,6 +107,8 @@ class WrappedFD:
         object will also close the file descriptor.
         """
         from socket import socket
+
+        self._check()
         s = socket(fileno=self._fd)
         self._fd = self._CONVERTED
         return s
