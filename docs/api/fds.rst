@@ -14,3 +14,5 @@ File descriptor support
    .. automethod:: fileno
 
    .. automethod:: close
+
+.. autoexception:: NoFDError

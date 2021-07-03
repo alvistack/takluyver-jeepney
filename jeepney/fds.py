@@ -5,6 +5,8 @@ from warnings import warn
 
 
 class NoFDError(RuntimeError):
+    """Raised by :class:`WrappedFD` methods if it was already closed/converted
+    """
     pass
 
 
@@ -73,7 +75,11 @@ class WrappedFD:
         return self._fd
 
     def to_raw_fd(self):
-        """Convert to the low-level integer file descriptor
+        """Convert to the low-level integer file descriptor::
+
+            raw_fd = fd.to_raw_fd()
+            os.write(raw_fd, b'xyz')
+            os.close(raw_fd)
 
         The wrapper object can't be used after calling this. The caller is
         responsible for closing the file descriptor.
@@ -83,7 +89,10 @@ class WrappedFD:
         return fd
 
     def to_file(self, mode, buffering=-1, encoding=None, errors=None, newline=None):
-        """Convert to a Python file object
+        """Convert to a Python file object::
+
+            with fd.to_file('w') as f:
+                f.write('xyz')
 
         The arguments are the same as for the builtin :func:`open` function.
 
@@ -101,7 +110,10 @@ class WrappedFD:
     def to_socket(self):
         """Convert to a socket object
 
-        This returns a standard library :func:`socket.socket` object.
+        This returns a standard library :func:`socket.socket` object::
+
+            with fd.to_socket() as sock:
+                b = sock.sendall(b'xyz')
 
         The wrapper object can't be used after calling this. Closing the socket
         object will also close the file descriptor.
