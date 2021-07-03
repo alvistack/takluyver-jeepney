@@ -61,3 +61,13 @@ def test_filter(router):
 
         signal_msg = queue.get(timeout=2.0)
         assert signal_msg.body == (name, '', router.unique_name)
+
+
+def test_recv_fd(respond_with_fd):
+    getfd_call = new_method_call(respond_with_fd, 'GetFD')
+    with open_dbus_router(bus='SESSION', enable_fds=True) as router:
+        reply = router.send_and_get_reply(getfd_call, timeout=5)
+
+    assert reply.header.message_type is MessageType.method_return
+    with reply.body[0].to_file('w+') as f:
+        assert f.read() == 'readme'

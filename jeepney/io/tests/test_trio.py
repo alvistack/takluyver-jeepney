@@ -90,3 +90,14 @@ async def test_filter():
             with trio.fail_after(2.0):
                 signal_msg = await chan.receive()
             assert signal_msg.body == (name, '', router.unique_name)
+
+
+async def test_recv_fd(respond_with_fd):
+    getfd_call = new_method_call(respond_with_fd, 'GetFD')
+    with trio.fail_after(5):
+        async with open_dbus_router(bus='SESSION', enable_fds=True) as router:
+            reply = await router.send_and_get_reply(getfd_call)
+
+    assert reply.header.message_type is MessageType.method_return
+    with reply.body[0].to_file('w+') as f:
+        assert f.read() == 'readme'
