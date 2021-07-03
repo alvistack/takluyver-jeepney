@@ -7,7 +7,7 @@ from .low_level import (
 )
 from .bus import find_session_bus, find_system_bus
 from .bus_messages import *
-from .fds import WrappedFD
+from .fds import WrappedFD, NoFDError
 from .wrappers import *
 
 __version__ = '0.6.0'
