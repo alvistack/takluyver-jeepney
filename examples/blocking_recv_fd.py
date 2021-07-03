@@ -27,7 +27,7 @@ with open_dbus_connection(enable_fds=True) as connection:
         print(f"Message {msg.header.serial} calls {method}")
 
         if method == 'write_data':
-            # body contains a WrappedFD object, which we can convert to a file:
+            # body contains a FileDescriptor object, which we can convert to a file:
             fd, = msg.body
             with fd.to_file('w') as f:
                 f.write(f'Timestamp: {datetime.now()}')

@@ -84,10 +84,11 @@ To send a file descriptor, pass any object with a ``.fileno()`` method, such as
 an open file or socket, or a suitable integer. The file descriptor must not be
 closed before the message is sent.
 
-A received file descriptor will be returned as a :class:`.WrappedFD` object
-to help avoid leaking FDs. This can easily be converted to a file object
-(:meth:`~.WrappedFD.to_file`), a socket (:meth:`~.WrappedFD.to_socket`) or a
-plain integer (:meth:`~.WrappedFD.to_raw_fd`).
+A received file descriptor will be returned as a :class:`.FileDescriptor` object
+to help avoid leaking FDs. This can easily be converted to
+a file object (:meth:`~.FileDescriptor.to_file`),
+a socket (:meth:`~.FileDescriptor.to_socket`)
+or a plain integer (:meth:`~.FileDescriptor.to_raw_fd`).
 
 .. code-block:: python
 

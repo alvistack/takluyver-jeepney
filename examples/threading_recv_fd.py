@@ -28,7 +28,7 @@ def serve(conn, i):
         print(f"Thread {i}: Message {msg.header.serial} calls {method}")
 
         if method == 'write_data':
-            # body contains a WrappedFD object, which we can convert to a file:
+            # body contains a FileDescriptor object, which we can convert to a file:
             fd, = msg.body
             with fd.to_file('w') as f:
                 f.write(f'Timestamp: {datetime.now()}, server thread {i}')

@@ -3,7 +3,7 @@ File descriptor support
 
 .. currentmodule:: jeepney
 
-.. autoclass:: WrappedFD
+.. autoclass:: FileDescriptor
 
    .. automethod:: to_file
 

@@ -4,7 +4,7 @@ import socket
 
 import pytest
 
-from jeepney import WrappedFD, NoFDError
+from jeepney import FileDescriptor, NoFDError
 
 def assert_not_fd(fd: int):
     """Check that the given number is not open as a file descriptor"""
@@ -16,7 +16,7 @@ def assert_not_fd(fd: int):
 def test_close(tmp_path):
     fd = os.open(tmp_path / 'a', os.O_CREAT | os.O_RDWR)
 
-    with WrappedFD(fd) as wfd:
+    with FileDescriptor(fd) as wfd:
         assert wfd.fileno() == fd
     # Leaving the with block is equivalent to calling .close()
 
@@ -29,7 +29,7 @@ def test_close(tmp_path):
 
 def test_to_raw_fd(tmp_path):
     fd = os.open(tmp_path / 'a', os.O_CREAT)
-    wfd = WrappedFD(fd)
+    wfd = FileDescriptor(fd)
     assert wfd.fileno() == fd
 
     assert wfd.to_raw_fd() == fd
@@ -44,7 +44,7 @@ def test_to_raw_fd(tmp_path):
 
 def test_to_file(tmp_path):
     fd = os.open(tmp_path / 'a', os.O_CREAT | os.O_RDWR)
-    wfd = WrappedFD(fd)
+    wfd = FileDescriptor(fd)
 
     with wfd.to_file('w') as f:
         assert f.write('abc')
@@ -63,7 +63,7 @@ def test_to_socket():
     try:
         s1.sendall(b'abcd')
         sfd = s2.detach()
-        wfd = WrappedFD(sfd)
+        wfd = FileDescriptor(sfd)
 
         with wfd.to_socket() as sock:
             b = sock.recv(16)

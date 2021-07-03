@@ -16,7 +16,7 @@ from trio.abc import Channel
 
 from jeepney.auth import Authenticator, BEGIN
 from jeepney.bus import get_bus
-from jeepney.fds import WrappedFD, fds_buf_size
+from jeepney.fds import FileDescriptor, fds_buf_size
 from jeepney.low_level import Parser, MessageType, Message
 from jeepney.wrappers import ProxyBase, unwrap_msg
 from jeepney.bus_messages import message_bus
@@ -149,7 +149,7 @@ class DBusConnection(Channel):
             if flags & getattr(trio.socket, 'MSG_CTRUNC', 0):
                 self._close()
                 raise RuntimeError("Unable to receive all file descriptors")
-            return data, WrappedFD.from_ancdata(ancdata)
+            return data, FileDescriptor.from_ancdata(ancdata)
 
         else:  # not self.enable_fds
             with _translate_socket_errors_to_stream_errors():

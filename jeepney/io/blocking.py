@@ -14,7 +14,7 @@ from typing import Optional
 from jeepney import Parser, Message, MessageType, HeaderFields
 from jeepney.auth import Authenticator, BEGIN
 from jeepney.bus import get_bus
-from jeepney.fds import WrappedFD, fds_buf_size
+from jeepney.fds import FileDescriptor, fds_buf_size
 from jeepney.wrappers import ProxyBase, unwrap_msg
 from jeepney.routing import Router
 from jeepney.bus_messages import message_bus
@@ -117,7 +117,7 @@ class DBusConnectionBase:
         if flags & getattr(socket, 'MSG_CTRUNC', 0):
             self.close()
             raise RuntimeError("Unable to receive all file descriptors")
-        return unwrap_read(data), WrappedFD.from_ancdata(ancdata)
+        return unwrap_read(data), FileDescriptor.from_ancdata(ancdata)
 
     def close(self):
         """Close the connection"""

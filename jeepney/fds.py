@@ -5,16 +5,16 @@ from warnings import warn
 
 
 class NoFDError(RuntimeError):
-    """Raised by :class:`WrappedFD` methods if it was already closed/converted
+    """Raised by :class:`FileDescriptor` methods if it was already closed/converted
     """
     pass
 
 
-class WrappedFD:
+class FileDescriptor:
     """A file descriptor received in a D-Bus message
 
     This wrapper helps ensure that the file descriptor is closed exactly once.
-    If you don't explicitly convert or close the WrappedFD object, it will
+    If you don't explicitly convert or close the FileDescriptor object, it will
     close its file descriptor when it goes out of scope, and emit a
     ResourceWarning.
     """
@@ -31,7 +31,7 @@ class WrappedFD:
             detail = 'closed'
         elif self._fd == self._CONVERTED:
             detail = 'converted'
-        return f"<WrappedFD ({detail})>"
+        return f"<FileDescriptor ({detail})>"
 
     def close(self):
         """Close the file descriptor
@@ -45,7 +45,7 @@ class WrappedFD:
         if self._fd == self._CLOSED:
             pass
         elif self._fd == self._CONVERTED:
-            raise NoFDError("Can't close WrappedFD after converting it")
+            raise NoFDError("Can't close FileDescriptor after converting it")
         else:
             self._fd, fd = self._CLOSED, self._fd
             os.close(fd)
@@ -59,7 +59,7 @@ class WrappedFD:
     def __del__(self):
         if self._fd >= 0:
             warn(
-                f'WrappedFD ({self._fd}) was neither closed nor converted',
+                f'FileDescriptor ({self._fd}) was neither closed nor converted',
                 ResourceWarning, stacklevel=2, source=self
             )
             self.close()
@@ -67,10 +67,14 @@ class WrappedFD:
     def _check(self):
         if self._fd < 0:
             detail = 'closed' if self._fd == self._CLOSED else 'converted'
-            raise NoFDError(f'WrappedFD object was already {detail}')
+            raise NoFDError(f'FileDescriptor object was already {detail}')
 
     def fileno(self):
-        """Get the integer file descriptor, without affecting the wrapper"""
+        """Get the integer file descriptor
+
+        This does not change the state of the :class:`FileDescriptor` object,
+        unlike the ``to_*`` methods.
+        """
         self._check()
         return self._fd
 
@@ -81,8 +85,8 @@ class WrappedFD:
             os.write(raw_fd, b'xyz')
             os.close(raw_fd)
 
-        The wrapper object can't be used after calling this. The caller is
-        responsible for closing the file descriptor.
+        The :class:`FileDescriptor` can't be used after calling this. The caller
+        is responsible for closing the file descriptor.
         """
         self._check()
         self._fd, fd = self._CONVERTED, self._fd
@@ -96,8 +100,8 @@ class WrappedFD:
 
         The arguments are the same as for the builtin :func:`open` function.
 
-        The wrapper object can't be used after calling this. Closing the file
-        object will also close the file descriptor.
+        The :class:`FileDescriptor` can't be used after calling this. Closing
+        the file object will also close the file descriptor.
         """
         self._check()
         f = open(
@@ -126,8 +130,8 @@ class WrappedFD:
         return s
 
     @classmethod
-    def from_ancdata(cls, ancdata) -> ['WrappedFD']:
-        """Make a list of WrappedFD from received file descriptors
+    def from_ancdata(cls, ancdata) -> ['FileDescriptor']:
+        """Make a list of FileDescriptor from received file descriptors
 
         ancdata is a list of ancillary data tuples as returned by socket.recvmsg()
         """

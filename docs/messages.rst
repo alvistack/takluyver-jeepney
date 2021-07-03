@@ -46,6 +46,6 @@ a few types require further explanation:
 * D-Bus *VARIANT* are 2-tuples ``(signature, data)``. E.g. to put a string into
   a variant field, you would pass the data ``("s", "my string")``.
 * D-Bus *UNIX_FD* are converted from objects with a ``.fileno()`` method
-  or plain integers, and converted to :class:`.WrappedFD` objects. See
+  or plain integers, and converted to :class:`.FileDescriptor` objects. See
   :ref:`send_recv_fds` for more details.
 
