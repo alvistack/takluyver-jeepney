@@ -239,6 +239,9 @@ class Array:
         length, pos = self.length_type.parse_data(buf, pos, endianness)
         pos += padding(pos, self.elt_type.alignment)
         end = pos + length
+        if self.elt_type == simple_types['y']:  # Array of bytes
+            return buf[pos:end], end
+
         res = []
         while pos < end:
             # print('Array elem', pos)
@@ -250,10 +253,11 @@ class Array:
         return res, pos
 
     def serialise(self, data, pos, endianness, fds=None):
+        data_is_bytes = False
         if isinstance(self.elt_type, DictEntry) and isinstance(data, dict):
             data = data.items()
         elif (self.elt_type == simple_types['y']) and isinstance(data, bytes):
-            pass
+            data_is_bytes = True
         elif not isinstance(data, list):
             raise TypeError("Not suitable for array: {!r}".format(data))
 
@@ -265,19 +269,23 @@ class Array:
         pad1 = padding(pos, self.alignment)
         pos_after_length = pos + pad1 + 4
         pad2 = padding(pos_after_length, self.elt_type.alignment)
-        data_pos = pos_after_length + pad2
-        limit_pos = data_pos + 2**26
-        chunks = []
-        for item in data:
-            chunks.append(self.elt_type.serialise(
-                item, data_pos, endianness, fds=fds
-            ))
-            data_pos += len(chunks[-1])
-            if data_pos > limit_pos:
-                raise SizeLimitError("Array size exceeds 64 MiB limit")
-        buf = b''.join(chunks)
+
+        if data_is_bytes:
+            buf = data
+        else:
+            data_pos = pos_after_length + pad2
+            limit_pos = data_pos + 2 ** 26
+            chunks = []
+            for item in data:
+                chunks.append(self.elt_type.serialise(
+                    item, data_pos, endianness, fds=fds
+                ))
+                data_pos += len(chunks[-1])
+                if data_pos > limit_pos:
+                    raise SizeLimitError("Array size exceeds 64 MiB limit")
+            buf = b''.join(chunks)
+
         len_data = self.length_type.serialise(len(buf), pos+pad1, endianness)
-        pos += len(len_data)
         # print('Array ser: pad1={!r}, len_data={!r}, pad2={!r}, buf={!r}'.format(
         #       pad1, len_data, pad2, buf))
         return (b'\0' * pad1) + len_data + (b'\0' * pad2) + buf

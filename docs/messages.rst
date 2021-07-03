@@ -37,15 +37,19 @@ Jeepney does not try to guess or discover the signature when you build a
 message: your code must explicitly specify a signature for every message.
 However, Jeepney can help you write this code: see :doc:`bindgen`.
 
-In most cases, DBus types have an obvious corresponding type in Python. However,
-a few types require further explanation:
+D-Bus types are converted to and from native Python objects as follows:
 
-* D-Bus *ARRAY* are Python lists, except for arrays of *DICT_ENTRY*, which are
-  dicts.
-* D-Bus *STRUCT* are Python tuples.
-* D-Bus *VARIANT* are 2-tuples ``(signature, data)``. E.g. to put a string into
+* All the D-Bus integer types are represented as Python :class:`int`,
+  including *BYTE* when it's not in an array.
+* *BOOLEAN* is :class:`bool`.
+* *DOUBLE* is :class:`float`.
+* *STRING*, *OBJECT_PATH* and *SIGNATURE* are all :class:`str`.
+* *ARRAY* is :class:`list`, except that an array of *BYTE* is a
+  :class:`bytes` object, and an array of *DICT_ENTRY* is a :class:`dict`.
+* *STRUCT* is :class:`tuple`.
+* *VARIANT* is a 2-tuple ``(signature, data)``. E.g. to put a string into
   a variant field, you would pass the data ``("s", "my string")``.
-* D-Bus *UNIX_FD* are converted from objects with a ``.fileno()`` method
+* *UNIX_FD* are converted from objects with a ``.fileno()`` method
   or plain integers, and converted to :class:`.FileDescriptor` objects. See
   :ref:`send_recv_fds` for more details.
 

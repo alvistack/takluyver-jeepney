@@ -57,8 +57,8 @@ def read_from_fd():
                     if msg.header.fields[HeaderFields.member] == 'ReadFD':
                         with msg.body[0].to_file('rb') as f:
                             f.seek(0)
-                            s = f.read().decode('utf-8')
-                        conn.send(new_method_return(msg, 's', (s,)))
+                            b = f.read()
+                        conn.send(new_method_return(msg, 'ay', (b,)))
                         return
                     else:
                         conn.send(new_error(msg, 'NoMethod'))

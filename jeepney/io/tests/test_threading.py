@@ -80,4 +80,4 @@ def test_send_fd(temp_file_and_contents, read_from_fd):
         reply = router.send_and_get_reply(readfd_call, timeout=5)
 
     assert reply.header.message_type is MessageType.method_return
-    assert reply.body[0] == data.decode('utf-8')
+    assert reply.body[0] == data
