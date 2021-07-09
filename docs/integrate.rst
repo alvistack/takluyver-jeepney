@@ -75,6 +75,8 @@ collecting the message definitions together like this could make it clearer.
 Sending & receiving file descriptors
 ------------------------------------
 
+.. versionadded:: 0.7
+
 D-Bus allows sending file descriptors - references to open files, sockets, etc.
 To use this, use the blocking, multi-threading or Trio integration and enable it
 (``enable_fds=True``) when connecting to D-Bus. If you enable FD support but the

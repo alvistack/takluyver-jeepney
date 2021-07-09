@@ -5,8 +5,7 @@ There are two parts to Jeepney:
 
 The **core** is all about creating D-Bus messages, serialising them to bytes,
 and deserialising bytes into :class:`.Message` objects.
-It aims to be a complete & reliable implementation of the D-Bus wire protocol
-(handling file descriptors is the only missing part I'm aware of).
+It aims to be a complete & reliable implementation of the D-Bus wire protocol.
 It follows the idea of `"Sans-I/O" <https://sans-io.readthedocs.io/>`_,
 implementing the D-Bus protocol independent of any means of sending or receiving
 the data.
