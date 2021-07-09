@@ -29,7 +29,7 @@ test_job_integration:
   image: fedora:32
   before_script:
     - dnf install -y dbus-daemon python3-pip
-    - pip install '.[test]'
+    - pip install '.[test,trio]'
   script:
     - dbus-run-session -- pytest
   stage: test

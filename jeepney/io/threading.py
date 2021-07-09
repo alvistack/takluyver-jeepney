@@ -1,57 +1,56 @@
+"""Synchronous IO wrappers with thread safety
+"""
 from concurrent.futures import Future
 from contextlib import contextmanager
 import functools
-from itertools import count
 import os
-from selectors import DefaultSelector, EVENT_READ
+from selectors import EVENT_READ
 import socket
 from queue import Queue, Full as QueueFull
 from threading import Lock, Thread
-import time
 from typing import Optional
 
-from jeepney import HeaderFields, Message, MessageType, Parser
-from jeepney.auth import AuthenticationError, BEGIN, make_auth_external, SASLParser
+from jeepney import Message, MessageType
 from jeepney.bus import get_bus
 from jeepney.bus_messages import message_bus
 from jeepney.wrappers import ProxyBase, unwrap_msg
-from .blocking import unwrap_read
+from .blocking import (
+    unwrap_read, prep_socket, DBusConnectionBase, timeout_to_deadline,
+)
 from .common import (
     MessageFilters, FilterHandle, ReplyMatcher, RouterClosed, check_replyable,
 )
+
+__all__ = [
+    'open_dbus_connection',
+    'open_dbus_router',
+    'DBusConnection',
+    'DBusRouter',
+    'Proxy',
+    'ReceiveStopped',
+]
 
 
 class ReceiveStopped(Exception):
     pass
 
 
-class DBusConnection:
-    def __init__(self, sock):
-        self.sock = sock
-        self.parser = Parser()
-        self.outgoing_serial = count(start=1)
-        self.selector = DefaultSelector()
-        self.select_key = self.selector.register(sock, EVENT_READ)
+class DBusConnection(DBusConnectionBase):
+    def __init__(self, sock: socket.socket, enable_fds=False):
+        super().__init__(sock, enable_fds=enable_fds)
         self._stop_r, self._stop_w = os.pipe()
         self.stop_key = self.selector.register(self._stop_r, EVENT_READ)
         self.send_lock = Lock()
         self.rcv_lock = Lock()
-        self.unique_name = None
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        self.close()
-        return False
 
     def send(self, message: Message, serial=None):
         """Serialise and send a :class:`~.Message` object"""
-        if serial is None:
-            serial = next(self.outgoing_serial)
-        data = message.serialise(serial=serial)
+        data, fds = self._serialise(message, serial)
         with self.send_lock:
-            self.sock.sendall(data)
+            if fds:
+                self._send_with_fds(data, fds)
+            else:
+                self.sock.sendall(data)
 
     def receive(self, *, timeout=None) -> Message:
         """Return the next available message from the connection
@@ -63,28 +62,23 @@ class DBusConnection:
         If the connection is closed from another thread, this will raise
         ReceiveStopped.
         """
-        if timeout is not None:
-            deadline = time.monotonic() + timeout
-        else:
-            deadline = None
+        deadline = timeout_to_deadline(timeout)
 
-        with self.rcv_lock:
-            while True:
-                msg = self.parser.get_next_message()
-                if msg is not None:
-                    return msg
-
-                if deadline is not None:
-                    timeout = deadline - time.monotonic()
-
-                b = self._read_some_data(timeout)
-                self.parser.add_data(b)
+        if not self.rcv_lock.acquire(timeout=(timeout or -1)):
+            raise TimeoutError(f"Did not get receive lock in {timeout} seconds")
+        try:
+            return self._receive(deadline)
+        finally:
+            self.rcv_lock.release()
 
     def _read_some_data(self, timeout=None):
         # Wait for data or a signal on the stop pipe
         for key, ev in self.selector.select(timeout):
             if key == self.select_key:
-                return unwrap_read(self.sock.recv(4096))
+                if self.enable_fds:
+                    return self._read_with_fds()
+                else:
+                    return unwrap_read(self.sock.recv(4096)), []
             elif key == self.stop_key:
                 raise ReceiveStopped("DBus receive stopped from another thread")
 
@@ -107,29 +101,23 @@ class DBusConnection:
     def close(self):
         """Close the connection"""
         self.interrupt()
-        self.selector.close()
-        self.sock.close()
+        super().close()
 
 
-def open_dbus_connection(bus='SESSION'):
+def open_dbus_connection(bus='SESSION', enable_fds=False, auth_timeout=1.):
     """Open a plain D-Bus connection
+
+    D-Bus has an authentication step before sending or receiving messages.
+    This takes < 1 ms in normal operation, but there is a timeout so that client
+    code won't get stuck if the server doesn't reply. *auth_timeout* configures
+    this timeout in seconds.
 
     :return: :class:`DBusConnection`
     """
     bus_addr = get_bus(bus)
-    sock = socket.socket(family=socket.AF_UNIX)
-    sock.connect(bus_addr)
-    sock.sendall(b'\0' + make_auth_external())
-    auth_parser = SASLParser()
-    while not auth_parser.authenticated:
-        auth_parser.feed(unwrap_read(sock.recv(1024)))
-        if auth_parser.error:
-            raise AuthenticationError(auth_parser.error)
+    sock = prep_socket(bus_addr, enable_fds, timeout=auth_timeout)
 
-    sock.sendall(BEGIN)
-
-    conn = DBusConnection(sock)
-    conn.parser.add_data(auth_parser.buffer)
+    conn = DBusConnection(sock, enable_fds)
 
     with DBusRouter(conn) as router:
         reply_body = Proxy(message_bus, router, timeout=10).Hello()
@@ -266,7 +254,7 @@ class Proxy(ProxyBase):
         return inner
 
 @contextmanager
-def open_dbus_router(bus='SESSION'):
+def open_dbus_router(bus='SESSION', enable_fds=False):
     """Open a D-Bus 'router' to send and receive messages.
 
     Use as a context manager::
@@ -277,8 +265,9 @@ def open_dbus_router(bus='SESSION'):
     On leaving the ``with`` block, the connection will be closed.
 
     :param str bus: 'SESSION' or 'SYSTEM' or a supported address.
+    :param bool enable_fds: Whether to enable passing file descriptors.
     :return: :class:`DBusRouter`
     """
-    with open_dbus_connection(bus=bus) as conn:
+    with open_dbus_connection(bus=bus, enable_fds=enable_fds) as conn:
         with DBusRouter(conn) as router:
             yield router

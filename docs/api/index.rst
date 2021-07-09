@@ -7,6 +7,7 @@ API reference
    core
    common_msgs
    auth
+   fds
 
 .. toctree::
    :maxdepth: 2

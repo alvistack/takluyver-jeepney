@@ -2,7 +2,7 @@ import asyncio
 from itertools import count
 from typing import Optional
 
-from jeepney.auth import SASLParser, make_auth_external, BEGIN, AuthenticationError
+from jeepney.auth import Authenticator, BEGIN
 from jeepney.bus import get_bus
 from jeepney import Message, MessageType, Parser
 from jeepney.wrappers import ProxyBase, unwrap_msg
@@ -63,23 +63,20 @@ async def open_dbus_connection(bus='SESSION'):
     reader, writer = await asyncio.open_unix_connection(bus_addr)
 
     # Authentication flow
-    writer.write(b'\0' + make_auth_external())
-    await writer.drain()
-    auth_parser = SASLParser()
-    while not auth_parser.authenticated:
+    authr = Authenticator()
+    for req_data in authr:
+        writer.write(req_data)
+        await writer.drain()
         b = await reader.read(1024)
         if not b:
             raise EOFError("Socket closed before authentication")
-        auth_parser.feed(b)
-        if auth_parser.error:
-            raise AuthenticationError(auth_parser.error)
+        authr.feed(b)
 
     writer.write(BEGIN)
     await writer.drain()
     # Authentication finished
 
     conn = DBusConnection(reader, writer)
-    conn.parser.add_data(auth_parser.buffer)
 
     # Say *Hello* to the message bus - this must be the first message, and the
     # reply gives us our unique name.

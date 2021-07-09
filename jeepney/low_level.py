@@ -62,13 +62,13 @@ class FixedType:
         self.size = self.alignment = size
         self.struct_code = struct_code
 
-    def parse_data(self, buf, pos, endianness):
+    def parse_data(self, buf, pos, endianness, fds=()):
         pos += padding(pos, self.alignment)
         code = endianness.struct_code() + self.struct_code
         val = struct.unpack(code, buf[pos:pos + self.size])[0]
         return val, pos + self.size
 
-    def serialise(self, data, pos, endianness):
+    def serialise(self, data, pos, endianness, fds=None):
         pad = b'\0' * padding(pos, self.alignment)
         code = endianness.struct_code() + self.struct_code
         return pad + struct.pack(code, data)
@@ -85,7 +85,7 @@ class Boolean(FixedType):
     def __init__(self):
         super().__init__(4, 'I')  # D-Bus booleans take 4 bytes
 
-    def parse_data(self, buf, pos, endianness):
+    def parse_data(self, buf, pos, endianness, fds=()):
         val, new_pos = super().parse_data(buf, pos, endianness)
         return bool(val), new_pos
 
@@ -94,6 +94,37 @@ class Boolean(FixedType):
 
     def __eq__(self, other):
         return type(other) is Boolean
+
+
+class FileDescriptor(FixedType):
+    def __init__(self):
+        super().__init__(4, 'I')
+
+    def parse_data(self, buf, pos, endianness, fds=()):
+        idx, new_pos = super().parse_data(buf, pos, endianness)
+        return fds[idx], new_pos
+
+    def serialise(self, data, pos, endianness, fds=None):
+        if fds is None:
+            raise RuntimeError("Sending FDs is not supported or not enabled")
+
+        if hasattr(data, 'fileno'):
+            data = data.fileno()
+        if isinstance(data, bool) or not isinstance(data, int):
+            raise TypeError("Cannot use {data!r} as file descriptor. Expected "
+                            "an int or an object with fileno() method")
+
+        if data < 0:
+            raise ValueError(f"File descriptor can't be negative ({data})")
+
+        fds.append(data)
+        return super().serialise(len(fds) - 1, pos, endianness)
+
+    def __repr__(self):
+        return 'FileDescriptor()'
+
+    def __eq__(self, other):
+        return type(other) is FileDescriptor
 
 
 simple_types = {
@@ -106,7 +137,7 @@ simple_types = {
     'x': FixedType(8, 'q'),  # signed 64-bit
     't': FixedType(8, 'Q'),  # unsigned 64-bit
     'd': FixedType(8, 'd'),  # double
-    'h': FixedType(8, 'I'),  # file descriptor (32-bit unsigned, index) TODO
+    'h': FileDescriptor(),   # file descriptor (uint32 index in a separate list)
 }
 
 
@@ -118,14 +149,14 @@ class StringType:
     def alignment(self):
         return self.length_type.size
 
-    def parse_data(self, buf, pos, endianness):
+    def parse_data(self, buf, pos, endianness, fds=()):
         length, pos = self.length_type.parse_data(buf, pos, endianness)
         end = pos + length
         val = buf[pos:end].decode('utf-8')
         assert buf[end:end + 1] == b'\0'
         return val, end + 1
 
-    def serialise(self, data, pos, endianness):
+    def serialise(self, data, pos, endianness, fds=None):
         if not isinstance(data, str):
             raise TypeError("Expected str, not {!r}".format(data))
         encoded = data.encode('utf-8')
@@ -155,15 +186,15 @@ class Struct:
             raise TypeError("Found dict entry outside array")
         self.fields = fields
 
-    def parse_data(self, buf, pos, endianness):
+    def parse_data(self, buf, pos, endianness, fds=()):
         pos += padding(pos, 8)
         res = []
         for field in self.fields:
-            v, pos = field.parse_data(buf, pos, endianness)
+            v, pos = field.parse_data(buf, pos, endianness, fds=fds)
             res.append(v)
         return tuple(res), pos
 
-    def serialise(self, data, pos, endianness):
+    def serialise(self, data, pos, endianness, fds=None):
         if not isinstance(data, tuple):
             raise TypeError("Expected tuple, not {!r}".format(data))
         if len(data) != len(self.fields):
@@ -174,7 +205,7 @@ class Struct:
         pos += len(pad)
         res_pieces = []
         for item, field in zip(data, self.fields):
-            res_pieces.append(field.serialise(item, pos, endianness))
+            res_pieces.append(field.serialise(item, pos, endianness, fds=fds))
             pos += len(res_pieces[-1])
         return pad + b''.join(res_pieces)
 
@@ -203,26 +234,30 @@ class Array:
     def __init__(self, elt_type):
         self.elt_type = elt_type
 
-    def parse_data(self, buf, pos, endianness):
+    def parse_data(self, buf, pos, endianness, fds=()):
         # print('Array start', pos)
         length, pos = self.length_type.parse_data(buf, pos, endianness)
         pos += padding(pos, self.elt_type.alignment)
         end = pos + length
+        if self.elt_type == simple_types['y']:  # Array of bytes
+            return buf[pos:end], end
+
         res = []
         while pos < end:
             # print('Array elem', pos)
-            v, pos = self.elt_type.parse_data(buf, pos, endianness)
+            v, pos = self.elt_type.parse_data(buf, pos, endianness, fds=fds)
             res.append(v)
         if isinstance(self.elt_type, DictEntry):
             # Convert list of 2-tuples to dict
             res = dict(res)
         return res, pos
 
-    def serialise(self, data, pos, endianness):
+    def serialise(self, data, pos, endianness, fds=None):
+        data_is_bytes = False
         if isinstance(self.elt_type, DictEntry) and isinstance(data, dict):
             data = data.items()
         elif (self.elt_type == simple_types['y']) and isinstance(data, bytes):
-            pass
+            data_is_bytes = True
         elif not isinstance(data, list):
             raise TypeError("Not suitable for array: {!r}".format(data))
 
@@ -234,17 +269,23 @@ class Array:
         pad1 = padding(pos, self.alignment)
         pos_after_length = pos + pad1 + 4
         pad2 = padding(pos_after_length, self.elt_type.alignment)
-        data_pos = pos_after_length + pad2
-        limit_pos = data_pos + 2**26
-        chunks = []
-        for item in data:
-            chunks.append(self.elt_type.serialise(item, data_pos, endianness))
-            data_pos += len(chunks[-1])
-            if data_pos > limit_pos:
-                raise SizeLimitError("Array size exceeds 64 MiB limit")
-        buf = b''.join(chunks)
+
+        if data_is_bytes:
+            buf = data
+        else:
+            data_pos = pos_after_length + pad2
+            limit_pos = data_pos + 2 ** 26
+            chunks = []
+            for item in data:
+                chunks.append(self.elt_type.serialise(
+                    item, data_pos, endianness, fds=fds
+                ))
+                data_pos += len(chunks[-1])
+                if data_pos > limit_pos:
+                    raise SizeLimitError("Array size exceeds 64 MiB limit")
+            buf = b''.join(chunks)
+
         len_data = self.length_type.serialise(len(buf), pos+pad1, endianness)
-        pos += len(len_data)
         # print('Array ser: pad1={!r}, len_data={!r}, pad2={!r}, buf={!r}'.format(
         #       pad1, len_data, pad2, buf))
         return (b'\0' * pad1) + len_data + (b'\0' * pad2) + buf
@@ -259,20 +300,22 @@ class Array:
 class Variant:
     alignment = 1
 
-    def parse_data(self, buf, pos, endianness):
+    def parse_data(self, buf, pos, endianness, fds=()):
         # print('variant', pos)
         sig, pos = simple_types['g'].parse_data(buf, pos, endianness)
         # print('variant sig:', repr(sig), pos)
         valtype = parse_signature(list(sig))
-        val, pos = valtype.parse_data(buf, pos, endianness)
+        val, pos = valtype.parse_data(buf, pos, endianness, fds=fds)
         # print('variant done', (sig, val), pos)
         return (sig, val), pos
 
-    def serialise(self, data, pos, endianness):
+    def serialise(self, data, pos, endianness, fds=None):
         sig, data = data
         valtype = parse_signature(list(sig))
         sig_buf = simple_types['g'].serialise(sig, pos, endianness)
-        return sig_buf + valtype.serialise(data, pos + len(sig_buf), endianness)
+        return sig_buf + valtype.serialise(
+            data, pos + len(sig_buf), endianness, fds=fds
+        )
 
     def __repr__(self):
         return 'Variant()'
@@ -396,31 +439,44 @@ class Message:
         return "{}({!r}, {!r})".format(type(self).__name__, self.header, self.body)
 
     @classmethod
-    def from_buffer(cls, buf: bytes) -> 'Message':
+    def from_buffer(cls, buf: bytes, fds=()) -> 'Message':
         header, pos = Header.from_buffer(buf)
+        n_fds = header.fields.get(HeaderFields.unix_fds, 0)
+        if n_fds > len(fds):
+            raise ValueError(
+                f"Message expects {n_fds} FDs, but only {len(fds)} were received"
+            )
+        fds = fds[:n_fds]
         body = ()
         if HeaderFields.signature in header.fields:
             sig = header.fields[HeaderFields.signature]
             body_type = parse_signature(list('(%s)' % sig))
-            body = body_type.parse_data(buf, pos, header.endianness)[0]
-        return cls(header, body)
+            body = body_type.parse_data(buf, pos, header.endianness, fds=fds)[0]
+        return Message(header, body)
 
-    def serialise(self, serial=None) -> bytes:
+    def serialise(self, serial=None, fds=None) -> bytes:
         """Convert this message to bytes.
 
         Specifying *serial* overrides the ``msg.header.serial`` field, so a
         connection can use its own serial number without modifying the message.
+
+        If file-descriptor support is in use, *fds* should be a
+        :class:`array.array` object with type ``'i'``. Any file descriptors in
+        the message will be added to the array. If the message contains FDs,
+        it can't be serialised without this array.
         """
         endian = self.header.endianness
 
         if HeaderFields.signature in self.header.fields:
             sig = self.header.fields[HeaderFields.signature]
             body_type = parse_signature(list('(%s)' % sig))
-            body_buf = body_type.serialise(self.body, 0, endian)
+            body_buf = body_type.serialise(self.body, 0, endian, fds=fds)
         else:
             body_buf = b''
 
         self.header.body_length = len(body_buf)
+        if fds:
+            self.header.fields[HeaderFields.unix_fds] = len(fds)
 
         header_buf = self.header.serialise(serial=serial)
         pad  = b'\0' * padding(len(header_buf), 8)
@@ -432,11 +488,13 @@ class Parser:
     """
     def __init__(self):
         self.buf = BufferPipe()
+        self.fds = []
         self.next_msg_size = None
 
-    def add_data(self, data: bytes):
+    def add_data(self, data: bytes, fds=()):
         """Provide newly received data to the parser"""
         self.buf.write(data)
+        self.fds.extend(fds)
 
     def feed(self, data):
         """Feed the parser newly read data.
@@ -445,6 +503,20 @@ class Parser:
         """
         self.add_data(data)
         return list(iter(self.get_next_message, None))
+
+    def bytes_desired(self):
+        """How many bytes can be received without going beyond the next message?
+
+        This is only used with file-descriptor passing, so we don't get too many
+        FDs in a single recvmsg call.
+        """
+        got = self.buf.bytes_buffered
+        if got < 16:  # The first 16 bytes tell us the message size
+            return 16 - got
+
+        if self.next_msg_size is None:
+            self.next_msg_size = calc_msg_size(self.buf.peek(16))
+        return self.next_msg_size - got
 
     def get_next_message(self) -> Optional[Message]:
         """Parse one message, if there is enough data.
@@ -457,8 +529,10 @@ class Parser:
         nms = self.next_msg_size
         if (nms is not None) and self.buf.bytes_buffered >= nms:
             raw_msg = self.buf.read(nms)
-            msg = Message.from_buffer(raw_msg)
+            msg = Message.from_buffer(raw_msg, fds=self.fds)
             self.next_msg_size = None
+            fds_consumed = msg.header.fields.get(HeaderFields.unix_fds, 0)
+            self.fds = self.fds[fds_consumed:]
             return msg
 
 

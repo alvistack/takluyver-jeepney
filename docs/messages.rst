@@ -28,7 +28,7 @@ See the :doc:`integration layer <integrate>` for that.
 Signatures
 ~~~~~~~~~~
 
-DBus is strongly typed, and every message has a *signature* describing the body
+D-Bus is strongly typed, and every message has a *signature* describing the body
 data. These are strings using characters such as ``i`` for a signed 32-bit
 integer. See the `DBus specification <https://dbus.freedesktop.org/doc/dbus-specification.html#type-system>`_
 for the full list.
@@ -37,13 +37,19 @@ Jeepney does not try to guess or discover the signature when you build a
 message: your code must explicitly specify a signature for every message.
 However, Jeepney can help you write this code: see :doc:`bindgen`.
 
-In most cases, DBus types have an obvious corresponding type in Python. However,
-a few types require further explanation:
+D-Bus types are converted to and from native Python objects as follows:
 
-* DBus *ARRAY* are Python lists, except for arrays of *DICT_ENTRY*, which are
-  dicts.
-* DBus *STRUCT* are Python tuples.
-* DBus *VARIANT* are 2-tuples ``(signature, data)``. E.g. to put a string into
+* All the D-Bus integer types are represented as Python :class:`int`,
+  including *BYTE* when it's not in an array.
+* *BOOLEAN* is :class:`bool`.
+* *DOUBLE* is :class:`float`.
+* *STRING*, *OBJECT_PATH* and *SIGNATURE* are all :class:`str`.
+* *ARRAY* is :class:`list`, except that an array of *BYTE* is a
+  :class:`bytes` object, and an array of *DICT_ENTRY* is a :class:`dict`.
+* *STRUCT* is :class:`tuple`.
+* *VARIANT* is a 2-tuple ``(signature, data)``. E.g. to put a string into
   a variant field, you would pass the data ``("s", "my string")``.
-* Jeepney does not (yet) support sending or receiving file descriptors.
+* *UNIX_FD* are converted from objects with a ``.fileno()`` method
+  or plain integers, and converted to :class:`.FileDescriptor` objects. See
+  :ref:`send_recv_fds` for more details.
 

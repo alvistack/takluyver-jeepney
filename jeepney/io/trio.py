@@ -1,14 +1,22 @@
+import array
+from contextlib import contextmanager
+import errno
 from itertools import count
 import logging
-from math import inf
 from typing import Optional
+
+try:
+    from contextlib import asynccontextmanager  # Python 3.7
+except ImportError:
+    from async_generator import asynccontextmanager  # Backport for Python 3.6
 
 from outcome import Value, Error
 import trio
 from trio.abc import Channel
 
-from jeepney.auth import SASLParser, make_auth_external, BEGIN, AuthenticationError
+from jeepney.auth import Authenticator, BEGIN
 from jeepney.bus import get_bus
+from jeepney.fds import FileDescriptor, fds_buf_size
 from jeepney.low_level import Parser, MessageType, Message
 from jeepney.wrappers import ProxyBase, unwrap_msg
 from jeepney.bus_messages import message_bus
@@ -25,6 +33,33 @@ __all__ = [
 ]
 
 
+# The function below is copied from trio, which is under the MIT license:
+
+# Permission is hereby granted, free of charge, to any person obtaining
+# a copy of this software and associated documentation files (the
+# "Software"), to deal in the Software without restriction, including
+# without limitation the rights to use, copy, modify, merge, publish,
+# distribute, sublicense, and/or sell copies of the Software, and to
+# permit persons to whom the Software is furnished to do so, subject to
+# the following conditions:
+#
+# The above copyright notice and this permission notice shall be
+# included in all copies or substantial portions of the Software.
+@contextmanager
+def _translate_socket_errors_to_stream_errors():
+    try:
+        yield
+    except OSError as exc:
+        if exc.errno in {errno.EBADF, errno.ENOTSOCK}:
+            # EBADF on Unix, ENOTSOCK on Windows
+            raise trio.ClosedResourceError("this socket was already closed") from None
+        else:
+            raise trio.BrokenResourceError(
+                "socket connection broken: {}".format(exc)
+            ) from exc
+
+
+
 class DBusConnection(Channel):
     """A plain D-Bus connection with no matching of replies.
 
@@ -35,37 +70,103 @@ class DBusConnection(Channel):
 
     Implements trio's channel interface for Message objects.
     """
-    def __init__(self, socket: trio.SocketStream):
+    def __init__(self, socket, enable_fds=False):
         self.socket = socket
+        self.enable_fds = enable_fds
         self.parser = Parser()
         self.outgoing_serial = count(start=1)
         self.unique_name = None
         self.send_lock = trio.Lock()
+        self.recv_lock = trio.Lock()
+        self._leftover_to_send = None  # type: Optional[memoryview]
 
     async def send(self, message: Message, *, serial=None):
         """Serialise and send a :class:`~.Message` object"""
         async with self.send_lock:
             if serial is None:
                 serial = next(self.outgoing_serial)
-            await self.socket.send_all(message.serialise(serial))
+            fds = array.array('i') if self.enable_fds else None
+            data = message.serialise(serial, fds=fds)
+            await self._send_data(data, fds)
+
+    # _send_data is copied & modified from trio's SocketStream.send_all() .
+    # See above for the MIT license.
+    async def _send_data(self, data: bytes, fds):
+        if self.socket.did_shutdown_SHUT_WR:
+            raise trio.ClosedResourceError("can't send data after sending EOF")
+
+        with _translate_socket_errors_to_stream_errors():
+            if self._leftover_to_send:
+                # A previous message was partly sent - finish sending it now.
+                await self._send_remainder(self._leftover_to_send)
+
+            with memoryview(data) as data:
+                if fds:
+                    sent = await self.socket.sendmsg([data], [(
+                        trio.socket.SOL_SOCKET, trio.socket.SCM_RIGHTS, fds
+                    )])
+                else:
+                    sent = await self.socket.send(data)
+
+                await self._send_remainder(data, sent)
+
+    async def _send_remainder(self, data: memoryview, already_sent=0):
+        try:
+            while already_sent < len(data):
+                with data[already_sent:] as remaining:
+                    sent = await self.socket.send(remaining)
+                already_sent += sent
+            self._leftover_to_send = None
+        except trio.Cancelled:
+            # Sending cancelled mid-message. Keep track of the remaining data
+            # so it can be sent before the next message, otherwise the next
+            # message won't be recognised.
+            self._leftover_to_send = data[already_sent:]
+            raise
 
     async def receive(self) -> Message:
         """Return the next available message from the connection"""
-        while True:
-            msg = self.parser.get_next_message()
-            if msg is not None:
-                return msg
+        async with self.recv_lock:
+            while True:
+                msg = self.parser.get_next_message()
+                if msg is not None:
+                    return msg
 
-            b = await self.socket.receive_some()
-            if not b:
-                raise trio.EndOfChannel("Socket closed at the other end")
-            self.parser.add_data(b)
+                # Once data is read, it must be given to the parser with no
+                # checkpoints (where the task could be cancelled).
+                b, fds = await self._read_data()
+                if not b:
+                    raise trio.EndOfChannel("Socket closed at the other end")
+                self.parser.add_data(b, fds)
 
+    async def _read_data(self):
+        if self.enable_fds:
+            nbytes = self.parser.bytes_desired()
+            with _translate_socket_errors_to_stream_errors():
+                data, ancdata, flags, _ = await self.socket.recvmsg(
+                    nbytes, fds_buf_size()
+                )
+            if flags & getattr(trio.socket, 'MSG_CTRUNC', 0):
+                self._close()
+                raise RuntimeError("Unable to receive all file descriptors")
+            return data, FileDescriptor.from_ancdata(ancdata)
+
+        else:  # not self.enable_fds
+            with _translate_socket_errors_to_stream_errors():
+                data = await self.socket.recv(4096)
+            return data, []
+
+    def _close(self):
+        self.socket.close()
+        self._leftover_to_send = None
+
+    # Our closing is currently sync, but AsyncResource objects must have aclose
     async def aclose(self):
         """Close the D-Bus connection"""
-        await self.socket.aclose()
+        self._close()
 
-    def router(self):
+    @asynccontextmanager
+    async def router(self):
         """Temporarily wrap this connection as a :class:`DBusRouter`
 
         To be used like::
@@ -76,10 +177,16 @@ class DBusConnection(Channel):
         While the router is running, you shouldn't use :meth:`receive`.
         Once the router is closed, you can use the plain connection again.
         """
-        return DBusRouter(self)
+        async with trio.open_nursery() as nursery:
+            router = DBusRouter(self)
+            await router.start(nursery)
+            try:
+                yield router
+            finally:
+                await router.aclose()
 
 
-async def open_dbus_connection(bus='SESSION') -> DBusConnection:
+async def open_dbus_connection(bus='SESSION', *, enable_fds=False) -> DBusConnection:
     """Open a plain D-Bus connection
 
     :return: :class:`DBusConnection`
@@ -87,20 +194,14 @@ async def open_dbus_connection(bus='SESSION') -> DBusConnection:
     bus_addr = get_bus(bus)
     sock : trio.SocketStream = await trio.open_unix_socket(bus_addr)
 
-    # Authentication flow
-    await sock.send_all(b'\0' + make_auth_external())
-    auth_parser = SASLParser()
-    while not auth_parser.authenticated:
-        b = await sock.receive_some()
-        auth_parser.feed(b)
-        if auth_parser.error:
-            raise AuthenticationError(auth_parser.error)
-
+    # Authentication
+    authr = Authenticator(enable_fds=enable_fds)
+    for req_data in authr:
+        await sock.send_all(req_data)
+        authr.feed(await sock.receive_some())
     await sock.send_all(BEGIN)
-    # Authentication finished
 
-    conn = DBusConnection(sock)
-    conn.parser.add_data(auth_parser.buffer)
+    conn = DBusConnection(sock.socket, enable_fds=enable_fds)
 
     # Say *Hello* to the message bus - this must be the first message, and the
     # reply gives us our unique name.
@@ -156,13 +257,10 @@ class DBusRouter:
     This runs a separate receiver task and dispatches received messages.
     """
     _nursery_mgr = None
-    _send_cancel_scope = None
     _rcv_cancel_scope = None
-    is_running = False
 
     def __init__(self, conn: DBusConnection):
         self._conn = conn
-        self._to_send, self._to_be_sent = trio.open_memory_channel(0)
         self._replies = ReplyMatcher()
         self._filters = MessageFilters()
 
@@ -173,13 +271,7 @@ class DBusRouter:
     async def send(self, message, *, serial=None):
         """Send a message, don't wait for a reply
         """
-        if serial is None:
-            serial = next(self._conn.outgoing_serial)
-        b = message.serialise(serial)
-        # Hand off the actual sending to a separate task. This ensures that
-        # cancelling the task that makes a D-Bus message can't break the
-        # connection by sending an incomplete message.
-        await self._to_send.send(b)
+        await self._conn.send(message, serial=serial)
 
     async def send_and_get_reply(self, message) -> Message:
         """Send a method call message and wait for the reply
@@ -187,7 +279,7 @@ class DBusRouter:
         Returns the reply message (method return or error message type).
         """
         check_replyable(message)
-        if not self.is_running:
+        if self._rcv_cancel_scope is None:
             raise RouterClosed("This DBusRouter has stopped")
 
         serial = next(self._conn.outgoing_serial)
@@ -226,29 +318,12 @@ class DBusRouter:
     # Task management -------------------------------------------
 
     async def start(self, nursery: trio.Nursery):
-        if self.is_running:
-            raise RuntimeError("DBusRequester tasks are already running")
-        self._send_cancel_scope = await nursery.start(self._sender)
+        if self._rcv_cancel_scope is not None:
+            raise RuntimeError("DBusRouter receiver task is already running")
         self._rcv_cancel_scope = await nursery.start(self._receiver)
 
     async def aclose(self):
         """Stop the sender & receiver tasks"""
-        # Close the channel to the sender task. Normally the task will be
-        # waiting for messages to send, and this is enough to stop it.
-        # This can't block, but we shield it so the code below can run if we're
-        # in cleanup after cancellation.
-        with trio.move_on_after(1) as cleanup_scope:
-            cleanup_scope.shield = True
-            await self._to_send.aclose()
-
-        # Allow a short grace period for send operations to complete.
-        # This should ensure that in normal conditions, we don't send an
-        # incomplete message (which breaks the connection), but avoids
-        # hanging if sending has somehow got stuck.
-        if self._send_cancel_scope is not None:
-            self._send_cancel_scope.deadline = trio.current_time() + 1
-            self._send_cancel_scope = None
-
         # It doesn't matter if we receive a partial message - the connection
         # should ensure that whatever is received is fed to the parser.
         if self._rcv_cancel_scope is not None:
@@ -257,27 +332,6 @@ class DBusRouter:
 
         # Ensure trio checkpoint
         await trio.sleep(0)
-
-    async def __aenter__(self):
-        self._nursery_mgr = trio.open_nursery()
-        nursery = await self._nursery_mgr.__aenter__()
-        await self.start(nursery)
-        return self
-
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
-        await self.aclose()
-        await self._nursery_mgr.__aexit__(exc_type, exc_val, exc_tb)
-        self._nursery_mgr = None
-
-    # Code to run in sender task --------------------------------------
-
-    async def _sender(self, task_status=trio.TASK_STATUS_IGNORED):
-        with trio.CancelScope() as cscope:
-            task_status.started(cscope)
-            async with self._to_be_sent:
-                async for bmsg in self._to_be_sent:
-                    async with self._conn.send_lock:
-                        await self._conn.socket.send_all(bmsg)
 
     # Code to run in receiver task ------------------------------------
 
@@ -298,7 +352,7 @@ class DBusRouter:
             self.is_running = True
             task_status.started(cscope)
             try:
-                while cscope.deadline == inf:
+                while True:
                     msg = await self._conn.receive()
                     self._dispatch(msg)
             finally:
@@ -341,24 +395,8 @@ class Proxy(ProxyBase):
         return inner
 
 
-class _RouterContext:
-    conn = None
-    req_ctx = None
-
-    def __init__(self, bus='SESSION'):
-        self.bus = bus
-
-    async def __aenter__(self):
-        self.conn = await open_dbus_connection(self.bus)
-        self.req_ctx = self.conn.router()
-        return await self.req_ctx.__aenter__()
-
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
-        await self.req_ctx.__aexit__(exc_type, exc_val, exc_tb)
-        await self.conn.aclose()
-
-
-def open_dbus_router(bus='SESSION'):
+@asynccontextmanager
+async def open_dbus_router(bus='SESSION', *, enable_fds=False):
     """Open a D-Bus 'router' to send and receive messages.
 
     Use as an async context manager::
@@ -376,4 +414,7 @@ def open_dbus_router(bus='SESSION'):
             async with conn.router() as req:
                 ...
     """
-    return _RouterContext(bus)
+    conn = await open_dbus_connection(bus, enable_fds=enable_fds)
+    async with conn:
+        async with conn.router() as rtr:
+            yield rtr

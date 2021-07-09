@@ -69,3 +69,42 @@ Let's rewrite the example above to use a message generator and a proxy:
 
 This is more code for the simple use case here, but in a larger application
 collecting the message definitions together like this could make it clearer.
+
+.. _send_recv_fds:
+
+Sending & receiving file descriptors
+------------------------------------
+
+.. versionadded:: 0.7
+
+D-Bus allows sending file descriptors - references to open files, sockets, etc.
+To use this, use the blocking, multi-threading or Trio integration and enable it
+(``enable_fds=True``) when connecting to D-Bus. If you enable FD support but the
+message bus can't or won't support it, :exc:`.FDNegotiationError` will be raised.
+
+To send a file descriptor, pass any object with a ``.fileno()`` method, such as
+an open file or socket, or a suitable integer. The file descriptor must not be
+closed before the message is sent.
+
+A received file descriptor will be returned as a :class:`.FileDescriptor` object
+to help avoid leaking FDs. This can easily be converted to
+a file object (:meth:`~.FileDescriptor.to_file`),
+a socket (:meth:`~.FileDescriptor.to_socket`)
+or a plain integer (:meth:`~.FileDescriptor.to_raw_fd`).
+
+.. code-block:: python
+
+    # Send a file descriptor for a temp file (normally not visible in any folder)
+    with TemporaryFile() as tf:
+        msg = new_method_call(server, 'write_data', 'h', (tf,))
+        await router.send_and_get_reply(msg)
+
+    # Receive a file descriptor, use it as a writable file
+    msg = await conn.receive()
+    fd, = msg.body
+    with fd.to_file('w') as f:
+        f.write(f'Timestamp: {datetime.now()}')
+
+The snippets above are based on the Trio integration. See the
+`examples directory <https://gitlab.com/takluyver/jeepney/-/tree/master/examples>`__
+in the Jeepney repository for complete, working examples.

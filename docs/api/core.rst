@@ -62,7 +62,7 @@ Message objects
       STRUCT          ``()``     tuple
       VARIANT         ``v``      2-tuple ``(signature, value)``
       DICT_ENTRY      ``{}``     dict (for array of dict entries)
-      UNIX_FD         ``h``      (not yet supported)
+      UNIX_FD         ``h``      See :ref:`send_recv_fds`
       ===========    ==========  ===========
 
    .. automethod:: serialise

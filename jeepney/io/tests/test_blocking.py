@@ -66,3 +66,23 @@ def test_filter(session_conn):
         signal_msg = session_conn.recv_until_filtered(matches, timeout=2)
 
         assert signal_msg.body == (name, '', session_conn.unique_name)
+
+
+def test_recv_fd(respond_with_fd):
+    getfd_call = new_method_call(respond_with_fd, 'GetFD')
+    with open_dbus_connection(bus='SESSION', enable_fds=True) as conn:
+        reply = conn.send_and_get_reply(getfd_call, timeout=5)
+
+    assert reply.header.message_type is MessageType.method_return
+    with reply.body[0].to_file('w+') as f:
+        assert f.read() == 'readme'
+
+
+def test_send_fd(temp_file_and_contents, read_from_fd):
+    temp_file, data = temp_file_and_contents
+    readfd_call = new_method_call(read_from_fd, 'ReadFD', 'h', (temp_file,))
+    with open_dbus_connection(bus='SESSION', enable_fds=True) as conn:
+        reply = conn.send_and_get_reply(readfd_call, timeout=5)
+
+    assert reply.header.message_type is MessageType.method_return
+    assert reply.body[0] == data
