@@ -50,7 +50,8 @@ Alternatives
 
 * GTK applications can use `Gio.DBusConnection
   <https://lazka.github.io/pgi-docs/#Gio-2.0/classes/DBusConnection.html>`_
-  and the higher-level wrapper `pydbus <https://github.com/LEW21/pydbus>`_.
+  or a higher-level wrapper like `dasbus <https://github.com/rhinstaller/dasbus>`_
+  or `pydbus <https://github.com/LEW21/pydbus>`_.
   There are also GObject wrappers for specific D-Bus services, e.g.
   `secret storage <https://lazka.github.io/pgi-docs/#Secret-1>`__ and
   `desktop notifications <https://lazka.github.io/pgi-docs/#Notify-0.7>`__.
