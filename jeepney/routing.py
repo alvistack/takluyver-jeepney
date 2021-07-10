@@ -1,3 +1,5 @@
+from warnings import warn
+
 from .low_level import MessageType, HeaderFields
 from .wrappers import DBusErrorResponse
 
@@ -11,10 +13,20 @@ class Router:
     """
     def __init__(self, handle_factory, on_unhandled=None):
         self.handle_factory = handle_factory
-        self.on_unhandled = on_unhandled
+        self._on_unhandled = on_unhandled
         self.outgoing_serial = 0
         self.awaiting_reply = {}
         self.signal_callbacks = {}
+
+    @property
+    def on_unhandled(self):
+        return self._on_unhandled
+
+    @on_unhandled.setter
+    def on_unhandled(self, value):
+        warn("Setting on_unhandled is deprecated. Please use the filter() "
+             "method or simple receive() calls instead.", stacklevel=2)
+        self._on_unhandled = value
 
     def outgoing(self, msg):
         """Set the serial number in the message & make a handle if a method call
@@ -29,6 +41,8 @@ class Router:
     def subscribe_signal(self, callback, path, interface, member):
         """Add a callback for a signal.
         """
+        warn("The subscribe_signal() method is deprecated. "
+             "Please use the filter() API instead.", stacklevel=2)
         self.signal_callbacks[(path, interface, member)] = callback
 
     def incoming(self, msg):
