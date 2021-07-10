@@ -1,6 +1,15 @@
 Release notes
 =============
 
+0.7
+---
+
+* Support for :ref:`sending and receiving file descriptors <send_recv_fds>`.
+  This is available with the blocking, threading and trio integration layers.
+* Deprecated older integration APIs, in favour of new APIs introduced in 0.5.
+* Fixed passing a deque in to :meth:`~.blocking.DBusConnection.filter` in the
+  blocking integration API.
+
 0.6
 ---
 
