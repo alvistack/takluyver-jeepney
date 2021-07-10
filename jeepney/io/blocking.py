@@ -208,7 +208,9 @@ class DBusConnection(DBusConnectionBase):
         :param collections.deque queue: Matched messages will be added to this
         :param int bufsize: If no deque is passed in, create one with this size
         """
-        return FilterHandle(self._filters, rule, queue or deque(maxlen=bufsize))
+        if queue is None:
+            queue = deque(maxlen=bufsize)
+        return FilterHandle(self._filters, rule, queue)
 
     def recv_until_filtered(self, queue, *, timeout=None) -> Message:
         """Process incoming messages until one is filtered into queue
