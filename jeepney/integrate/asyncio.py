@@ -1,5 +1,6 @@
 """Deprecated: use jeepney.io.asyncio instead"""
 import asyncio
+from warnings import warn
 
 from jeepney import Parser, MessageType
 from jeepney.auth import AuthenticationError, BEGIN, make_auth_external, SASLParser
@@ -7,6 +8,9 @@ from jeepney.bus import get_bus
 from jeepney.bus_messages import message_bus
 from jeepney.routing import Router
 from jeepney.wrappers import ProxyBase
+
+warn("jeepney.integrate.asyncio is deprecated: please use jeepney.io.asyncio "
+     "instead.", stacklevel=2)
 
 class DBusProtocol(asyncio.Protocol):
     def __init__(self):

@@ -2,6 +2,7 @@ from asyncio import as_completed, Future, wait_for
 from itertools import count
 import socket
 from typing import Optional
+from warnings import warn
 
 from tornado.ioloop import IOLoop
 from tornado.iostream import IOStream
@@ -17,6 +18,9 @@ from jeepney.bus_messages import message_bus
 from .common import (
     MessageFilters, FilterHandle, ReplyMatcher, RouterClosed, check_replyable,
 )
+
+warn("jeepney.io.tornado is deprecated. Tornado is now built on top of "
+     "asyncio, so please use jeepney.io.asyncio instead.", stacklevel=2)
 
 
 class DBusConnection:

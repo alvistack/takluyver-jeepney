@@ -1,6 +1,10 @@
 """Deprecated: use jeepney.io.blocking instead"""
+from warnings import warn
+
 from jeepney.io.blocking import *
 
+warn("jeepney.integrate.blocking is deprecated: please use jeepney.io.blocking "
+     "instead.", stacklevel=2)
 
 def connect_and_authenticate(bus='SESSION') -> DBusConnection:
     conn = open_dbus_connection(bus)
