@@ -10,8 +10,8 @@ Client 1
 Client 2
     An interested party (here, called *watcher*). It asks the bus to emit a
     signal (send it an update) whenever *service*'s well-known bus name changes
-    hands.  It uses Jeepney's ``router.subscribe_signal`` to fire a callback
-    every time this occurs.
+    hands.  It uses Jeepney's ``router.filter()`` to get a message whenever this
+    happens.
 
 .. _well-known bus name: https://dbus.freedesktop.org/doc
    /dbus-specification.html#message-protocol-names
