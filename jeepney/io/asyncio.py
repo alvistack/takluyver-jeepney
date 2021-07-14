@@ -1,4 +1,5 @@
 import asyncio
+import contextlib
 from itertools import count
 from typing import Optional
 
@@ -145,7 +146,10 @@ class DBusRouter:
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         if self._rcv_task.done():
             self._rcv_task.result()  # Throw exception if receive task failed
-        self._rcv_task.cancel()
+        else:
+            self._rcv_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await self._rcv_task
         return False
 
     # Code to run in receiver task ------------------------------------
