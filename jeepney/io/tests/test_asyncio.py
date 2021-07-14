@@ -25,9 +25,8 @@ bus_peer = DBusAddress(
 
 @pytest.fixture()
 async def connection():
-    conn = await open_dbus_connection(bus='SESSION')
-    yield conn
-    await conn.close()
+    async with (await open_dbus_connection(bus='SESSION')) as conn:
+        yield conn
 
 async def test_connect(connection):
     assert connection.unique_name.startswith(':')

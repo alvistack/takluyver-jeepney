@@ -53,6 +53,12 @@ class DBusConnection:
         self.writer.close()
         await self.writer.wait_closed()
 
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        await self.close()
+
 
 async def open_dbus_connection(bus='SESSION'):
     """Open a plain D-Bus connection
