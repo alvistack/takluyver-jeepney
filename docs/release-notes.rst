@@ -1,6 +1,16 @@
 Release notes
 =============
 
+0.7.1
+-----
+
+* Add ``async with`` support to :class:`~.asyncio.DBusConnection` in the
+  asyncio integration.
+* Fix calling :meth:`~.asyncio.DBusConnection.receive` immediately after opening
+  a connection in the asyncio integration.
+
+Thanks to Aleksandr Mezin for these changes.
+
 0.7
 ---
 
