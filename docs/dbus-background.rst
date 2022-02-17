@@ -44,31 +44,6 @@ The application might use this to choose between updating the notification
 ('**2** new messages') or sending a new one. There's no reply to a signal,
 and the sender doesn't know if anything received it or not.
 
-Message buses
--------------
-
-Applications using D-Bus connect to a *message bus*, a small program which is
-always running. The bus takes care of delivering messages to other applications.
-
-There are normally two buses you need to know about.
-Each logged-in user has their own **session bus**, handling things
-like desktop notifications (and the other examples above).
-
-The **system bus** is shared for all users. In particular, requests sent via the
-system bus can do things that would otherwise require admin (sudo) access, like
-unmounting a USB stick or installing new packages. (How the system decides
-whether to allow these actions or not is a separate topic - look up 'polkit' if
-you want to know about that).
-
-You can also talk to the message bus itself (using D-Bus messages, of course).
-This is how you subscribe to signals, or claim a name so other programs can send
-you method calls. The message bus has the name ``org.freedesktop.DBus``.
-
-.. note::
-
-   Programs *can* agree some other way to connect and send each other D-Bus
-   messages without a message bus. This isn't very common, though.
-
 Names
 -----
 
@@ -95,6 +70,31 @@ The people who control https://freedesktop.org/ can define names starting
 with ``org.freedesktop.`` (or ``/org/freedesktop/`` for objects). There's no way
 to enforce this, but so long as everyone sticks to it, we don't have to worry
 about the same name being used for different things.
+
+Message buses
+-------------
+
+Applications using D-Bus connect to a *message bus*, a small program which is
+always running. The bus takes care of delivering messages to other applications.
+
+There are normally two buses you need to know about.
+Each logged-in user has their own **session bus**, handling things
+like desktop notifications (and the other examples above).
+
+The **system bus** is shared for all users. In particular, requests sent via the
+system bus can do things that would otherwise require admin (sudo) access, like
+unmounting a USB stick or installing new packages. (How the system decides
+whether to allow these actions or not is a separate topic - look up 'polkit' if
+you want to know about that).
+
+You can also talk to the message bus itself (using D-Bus messages, of course).
+This is how you subscribe to signals, or claim a bus name so other programs can
+send you method calls. The message bus has the name ``org.freedesktop.DBus``.
+
+.. note::
+
+   Programs *can* agree some other way to connect and send each other D-Bus
+   messages without a message bus. This isn't very common, though.
 
 Special features
 ----------------
