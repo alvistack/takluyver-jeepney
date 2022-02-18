@@ -58,10 +58,12 @@ Alternatives
 * PyQt applications can use the `Qt D-Bus module
   <https://doc.qt.io/qt-5/qtdbus-index.html>`_, although as of 2020, this is
   `not exposed by PySide <https://bugreports.qt.io/browse/PYSIDE-1319>`__.
-* `dbus-python <https://dbus.freedesktop.org/doc/dbus-python/>`_ is a Python
-  binding to the reference D-Bus implementation in C. It is very complete and
-  well tested, but may be trickier to install and to integrate with event loops
-  and async frameworks.
+* `DBussy <https://github.com/ldo/dbussy>`_ works with asyncio. It is a Python
+  binding to the libdbus reference implementation in C, whereas Jeepney
+  reimplements the D-Bus protocol in Python.
+* `dbus-python <https://dbus.freedesktop.org/doc/dbus-python/>`_ is the original
+  Python binding to libdbus. It is very complete and well tested, but may be
+  trickier to install and to integrate with event loops and async frameworks.
 
 .. seealso::
    `D-Bus Python bindings on the Freedesktop wiki
