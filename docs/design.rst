@@ -56,8 +56,10 @@ Alternatives
   `secret storage <https://lazka.github.io/pgi-docs/#Secret-1>`__ and
   `desktop notifications <https://lazka.github.io/pgi-docs/#Notify-0.7>`__.
 * PyQt applications can use the `Qt D-Bus module
-  <https://doc.qt.io/qt-5/qtdbus-index.html>`_, although as of 2020, this is
-  `not exposed by PySide <https://bugreports.qt.io/browse/PYSIDE-1319>`__.
+  <https://doc.qt.io/qt-5/qtdbus-index.html>`_. This has been available `in PyQt
+  <https://www.riverbankcomputing.com/static/Docs/PyQt5/api/qtdbus/qtdbus-module.html>`_
+  for many years, and `in PySide <https://doc.qt.io/qtforpython-6/PySide6/QtDBus/index.html#module-PySide6.QtDBus>`_
+  from version 6.2 (released in 2021).
 * `DBussy <https://github.com/ldo/dbussy>`_ works with asyncio. It is a Python
   binding to the libdbus reference implementation in C, whereas Jeepney
   reimplements the D-Bus protocol in Python.
