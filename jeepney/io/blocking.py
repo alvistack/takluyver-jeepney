@@ -129,7 +129,6 @@ class DBusConnectionBase:
 class DBusConnection(DBusConnectionBase):
     def __init__(self, sock: socket.socket, enable_fds=False):
         super().__init__(sock, enable_fds)
-        self._unwrap_reply = False
 
         # Message routing machinery
         self._router = Router(_Future)  # Old interface, for backwards compat
@@ -185,7 +184,10 @@ class DBusConnection(DBusConnectionBase):
         deadline = timeout_to_deadline(timeout)
 
         if unwrap is None:
-            unwrap = self._unwrap_reply
+            unwrap = False
+        else:
+            warn("Passing unwrap= to .send_and_get_reply() is deprecated and "
+                 "will break in a future version of Jeepney.", stacklevel=2)
 
         serial = next(self.outgoing_serial)
         self.send_message(message, serial=serial)
