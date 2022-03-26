@@ -10,6 +10,7 @@ from selectors import DefaultSelector, EVENT_READ
 import socket
 import time
 from typing import Optional
+from warnings import warn
 
 from jeepney import Parser, Message, MessageType, HeaderFields
 from jeepney.auth import Authenticator, BEGIN
@@ -131,13 +132,19 @@ class DBusConnection(DBusConnectionBase):
         self._unwrap_reply = False
 
         # Message routing machinery
-        self.router = Router(_Future)  # Old interface, for backwards compat
+        self._router = Router(_Future)  # Old interface, for backwards compat
         self._filters = MessageFilters()
 
         # Say Hello, get our unique name
         self.bus_proxy = Proxy(message_bus, self)
         hello_reply = self.bus_proxy.Hello()
         self.unique_name = hello_reply[0]
+
+    @property
+    def router(self):
+        warn("conn.router is deprecated, see the docs for APIs to use instead.",
+             stacklevel=2)
+        return self._router
 
     def send(self, message: Message, serial=None):
         """Serialise and send a :class:`~.Message` object"""
@@ -164,7 +171,7 @@ class DBusConnection(DBusConnectionBase):
         See :meth:`filter`. Returns nothing.
         """
         msg = self.receive(timeout=timeout)
-        self.router.incoming(msg)
+        self._router.incoming(msg)
         for filter in self._filters.matches(msg):
             filter.queue.append(msg)
 
@@ -191,7 +198,7 @@ class DBusConnection(DBusConnectionBase):
                 return msg_in
 
             # Not the reply
-            self.router.incoming(msg_in)
+            self._router.incoming(msg_in)
             for filter in self._filters.matches(msg_in):
                 filter.queue.append(msg_in)
 
