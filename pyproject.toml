@@ -19,7 +19,7 @@ classifiers = [
 test = [
     "pytest",
     "pytest-trio",
-    "pytest-asyncio",
+    "pytest-asyncio >=0.17",
     "testpath",
     "trio",
     "async-timeout",

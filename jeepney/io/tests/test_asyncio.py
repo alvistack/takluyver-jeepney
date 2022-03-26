@@ -2,6 +2,7 @@ import asyncio
 
 import async_timeout
 import pytest
+import pytest_asyncio
 
 from jeepney import DBusAddress, new_method_call
 from jeepney.bus_messages import message_bus, MatchRule
@@ -24,7 +25,7 @@ bus_peer = DBusAddress(
 )
 
 
-@pytest.fixture()
+@pytest_asyncio.fixture()
 async def connection():
     async with (await open_dbus_connection(bus='SESSION')) as conn:
         yield conn
@@ -32,7 +33,7 @@ async def connection():
 async def test_connect(connection):
     assert connection.unique_name.startswith(':')
 
-@pytest.fixture()
+@pytest_asyncio.fixture()
 async def router():
     async with open_dbus_router(bus='SESSION') as router:
         yield router
