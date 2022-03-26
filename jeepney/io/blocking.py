@@ -276,9 +276,9 @@ class Proxy(ProxyBase):
             timeout = kwargs.pop('_timeout', self._timeout)
             msg = make_msg(*args, **kwargs)
             assert msg.header.message_type is MessageType.method_call
-            return self._connection.send_and_get_reply(
-                msg, timeout=timeout, unwrap=True
-            )
+            return unwrap_msg(self._connection.send_and_get_reply(
+                msg, timeout=timeout
+            ))
 
         return inner
 
