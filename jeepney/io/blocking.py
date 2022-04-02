@@ -10,6 +10,7 @@ from selectors import DefaultSelector, EVENT_READ
 import socket
 import time
 from typing import Optional
+from warnings import warn
 
 from jeepney import Parser, Message, MessageType, HeaderFields
 from jeepney.auth import Authenticator, BEGIN
@@ -128,16 +129,21 @@ class DBusConnectionBase:
 class DBusConnection(DBusConnectionBase):
     def __init__(self, sock: socket.socket, enable_fds=False):
         super().__init__(sock, enable_fds)
-        self._unwrap_reply = False
 
         # Message routing machinery
-        self.router = Router(_Future)  # Old interface, for backwards compat
+        self._router = Router(_Future)  # Old interface, for backwards compat
         self._filters = MessageFilters()
 
         # Say Hello, get our unique name
         self.bus_proxy = Proxy(message_bus, self)
         hello_reply = self.bus_proxy.Hello()
         self.unique_name = hello_reply[0]
+
+    @property
+    def router(self):
+        warn("conn.router is deprecated, see the docs for APIs to use instead.",
+             stacklevel=2)
+        return self._router
 
     def send(self, message: Message, serial=None):
         """Serialise and send a :class:`~.Message` object"""
@@ -164,7 +170,7 @@ class DBusConnection(DBusConnectionBase):
         See :meth:`filter`. Returns nothing.
         """
         msg = self.receive(timeout=timeout)
-        self.router.incoming(msg)
+        self._router.incoming(msg)
         for filter in self._filters.matches(msg):
             filter.queue.append(msg)
 
@@ -178,7 +184,10 @@ class DBusConnection(DBusConnectionBase):
         deadline = timeout_to_deadline(timeout)
 
         if unwrap is None:
-            unwrap = self._unwrap_reply
+            unwrap = False
+        else:
+            warn("Passing unwrap= to .send_and_get_reply() is deprecated and "
+                 "will break in a future version of Jeepney.", stacklevel=2)
 
         serial = next(self.outgoing_serial)
         self.send_message(message, serial=serial)
@@ -191,7 +200,7 @@ class DBusConnection(DBusConnectionBase):
                 return msg_in
 
             # Not the reply
-            self.router.incoming(msg_in)
+            self._router.incoming(msg_in)
             for filter in self._filters.matches(msg_in):
                 filter.queue.append(msg_in)
 
@@ -267,9 +276,9 @@ class Proxy(ProxyBase):
             timeout = kwargs.pop('_timeout', self._timeout)
             msg = make_msg(*args, **kwargs)
             assert msg.header.message_type is MessageType.method_call
-            return self._connection.send_and_get_reply(
-                msg, timeout=timeout, unwrap=True
-            )
+            return unwrap_msg(self._connection.send_and_get_reply(
+                msg, timeout=timeout
+            ))
 
         return inner
 

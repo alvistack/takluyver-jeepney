@@ -26,7 +26,7 @@ bus_peer = DBusAddress(
 
 def test_send_and_get_reply(session_conn):
     ping_call = new_method_call(bus_peer, 'Ping')
-    reply = session_conn.send_and_get_reply(ping_call, timeout=5, unwrap=False)
+    reply = session_conn.send_and_get_reply(ping_call, timeout=5)
     assert reply.header.message_type == MessageType.method_return
     assert reply.body == ()
 
