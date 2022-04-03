@@ -10,4 +10,4 @@ from .bus_messages import *
 from .fds import FileDescriptor, NoFDError
 from .wrappers import *
 
-__version__ = '0.7.1'
+__version__ = '0.8.0'
