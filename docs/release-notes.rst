@@ -1,6 +1,19 @@
 Release notes
 =============
 
+0.8
+---
+
+* Removed ``jeepney.integrate`` APIs, which were deprecated in 0.7. Use
+  ``jeepney.io`` instead (see :doc:`integrate`).
+* Removed deprecated ``jeepney.io.tornado`` API. Tornado now uses the asyncio
+  event loop, so you can use it along with ``jeepney.io.asyncio``.
+* Deprecated ``conn.router`` attribute in the :doc:`api/blocking` integration.
+  Use :ref:`proxies <msggen_proxies>` or :meth:`~.blocking.DBusConnection.send_and_get_reply`
+  to find   replies to method calls, and :meth:`~.blocking.DBusConnection.filter`
+  for other routing.
+* Added docs page with background on D-Bus (:doc:`dbus-background`).
+
 0.7.1
 -----
 

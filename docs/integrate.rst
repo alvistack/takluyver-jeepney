@@ -7,8 +7,6 @@ Jeepney can be used with several different frameworks:
 - Multi-threading with the `threading <https://docs.python.org/3/library/threading.html>`_ module
 - `Trio <https://trio.readthedocs.io/en/stable/>`_
 - `asyncio <https://docs.python.org/3/library/asyncio.html>`_
-- `Tornado <http://www.tornadoweb.org/en/stable/>`_ (Deprecated as the asyncio
-  integration should work with Tornado)
 
 For each of these, there is a module in ``jeepney.io`` providing the
 integration layer.
