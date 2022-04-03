@@ -8,14 +8,14 @@ import threading
 import time
 
 from jeepney import DBusAddress, new_method_call
-from jeepney.integrate.blocking import connect_and_authenticate
+from jeepney.io.blocking import open_dbus_connection
 
 server = DBusAddress(
     "/io/gitlab/takluyver/jeepney/examples/Server",
     bus_name="io.gitlab.takluyver.jeepney.examples.Server",
 )
 
-connection = connect_and_authenticate(bus='SESSION')
+connection = open_dbus_connection(bus='SESSION')
 sending = True
 
 def sender():
