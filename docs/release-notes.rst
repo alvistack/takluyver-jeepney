@@ -4,6 +4,8 @@ Release notes
 0.8
 ---
 
+2022-04-03
+
 * Removed ``jeepney.integrate`` APIs, which were deprecated in 0.7. Use
   ``jeepney.io`` instead (see :doc:`integrate`).
 * Removed deprecated ``jeepney.io.tornado`` API. Tornado now uses the asyncio
@@ -17,6 +19,8 @@ Release notes
 0.7.1
 -----
 
+2021-07-28
+
 * Add ``async with`` support to :class:`~.asyncio.DBusConnection` in the
   asyncio integration.
 * Fix calling :meth:`~.asyncio.DBusConnection.receive` immediately after opening
@@ -27,6 +31,8 @@ Thanks to Aleksandr Mezin for these changes.
 0.7
 ---
 
+2021-07-21
+
 * Support for :ref:`sending and receiving file descriptors <send_recv_fds>`.
   This is available with the blocking, threading and trio integration layers.
 * Deprecated older integration APIs, in favour of new APIs introduced in 0.5.
@@ -36,6 +42,8 @@ Thanks to Aleksandr Mezin for these changes.
 0.6
 ---
 
+2020-11-19
+
 * New method :meth:`~.blocking.DBusConnection.recv_until_filtered` in the
   blocking I/O integration to receive messages until one is filtered into a
   queue.
@@ -44,6 +52,8 @@ Thanks to Aleksandr Mezin for these changes.
 
 0.5
 ---
+
+2020-11-10
 
 * New common scheme for I/O integration - see :ref:`connections_and_routers`.
 
@@ -64,12 +74,16 @@ Thanks to Aleksandr Mezin for these changes.
 0.4.3
 -----
 
+2020-03-04
+
 * The blocking integration now throws ``ConnectionResetError`` on all systems
   when the connection was closed from the other end. It would previously hang
   on some systems.
 
 0.4.2
 -----
+
+2020-01-03
 
 * The blocking ``DBusConnection`` integration class now has a ``.close()``
   method, and can be used as a context manager::
@@ -81,6 +95,8 @@ Thanks to Aleksandr Mezin for these changes.
 0.4.1
 -----
 
+2019-08-11
+
 * Avoid using :class:`asyncio.Future` for the blocking integration.
 * Set the 'destination' field on method return and error messages to the
   'sender' from the parent message.
@@ -89,6 +105,8 @@ Thanks to Oscar Caballero and Thomas Grainger for contributing to this release.
 
 0.4
 ---
+
+2018-09-24
 
 * Authentication failures now raise a new :exc:`AuthenticationError`
   subclass of :exc:`ValueError`, so that they can be caught specifically.
