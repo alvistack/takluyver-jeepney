@@ -2,3 +2,6 @@ __pycache__/
 /dist/
 /docs/_build/
 .pytest_cache/
+
+*.egg-info/
+.pybuild/
