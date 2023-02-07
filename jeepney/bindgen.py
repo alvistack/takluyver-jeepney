@@ -1,7 +1,9 @@
 """Generate a wrapper class from DBus introspection data"""
 import argparse
-from textwrap import indent
+import os.path
+import sys
 import xml.etree.ElementTree as ET
+from textwrap import indent
 
 from jeepney.wrappers import Introspectable
 from jeepney.io.blocking import open_dbus_connection, Proxy
@@ -42,8 +44,8 @@ INTERFACE_CLASS_TEMPLATE = """
 class {cls_name}(MessageGenerator):
     interface = {interface!r}
 
-    def __init__(self, object_path={path!r},
-                 bus_name={bus_name!r}):
+    def __init__(self, object_path{path_default},
+                 bus_name{name_default}):
         super().__init__(object_path=object_path, bus_name=bus_name)
 """
 
@@ -56,8 +58,12 @@ class Interface:
 
     def make_code(self):
         cls_name = self.name.split('.')[-1]
-        chunks = [INTERFACE_CLASS_TEMPLATE.format(cls_name=cls_name,
-              interface=self.name, path=self.path, bus_name=self.bus_name)]
+        chunks = [INTERFACE_CLASS_TEMPLATE.format(
+            cls_name=cls_name,
+            interface=self.name,
+            path_default='' if self.path is None else '={self.path!r}',
+            name_default='' if self.bus_name is None else '={self.bus_name!r}'
+        )]
         for method in self.methods:
             chunks.append(indent(method.make_code(), ' ' * 4))
         return '\n'.join(chunks)
@@ -100,7 +106,12 @@ def code_from_xml(xml, path, bus_name, fh):
 
     return i
 
-def generate(path, name, output_file, bus='SESSION'):
+def generate_from_introspection(path, name, output_file, bus='SESSION'):
+    # Many D-Bus services have a main object at a predictable name, e.g.
+    # org.freedesktop.Notifications -> /org/freedesktop/Notifications
+    if not path:
+        path = '/' + name.replace('.', '/')
+
     conn = open_dbus_connection(bus)
     introspectable = Proxy(Introspectable(path, name), conn)
     xml, = introspectable.Introspect()
@@ -109,17 +120,49 @@ def generate(path, name, output_file, bus='SESSION'):
     n_interfaces = code_from_xml(xml, path, name, output_file)
     print("Written {} interface wrappers to {}".format(n_interfaces, output_file))
 
+def generate_from_file(input_file, path, name, output_file):
+    with open(input_file, encoding='utf-8') as f:
+        xml = f.read()
+
+    n_interfaces = code_from_xml(xml, path, name, output_file)
+    print("Written {} interface wrappers to {}".format(n_interfaces, output_file))
+
 def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument('-n', '--name', required=True)
-    ap.add_argument('-p', '--path', required=True)
-    ap.add_argument('--bus', default='SESSION')
-    ap.add_argument('-o', '--output')
+    ap = argparse.ArgumentParser(
+        description="Generate a simple wrapper module to call D-Bus methods.",
+        epilog="If you don't use --file, this will connect to D-Bus and introspect the "
+               "given name and path. --name and --path can also be used with --file, "
+               "to give defaults for the generated class."
+    )
+    ap.add_argument('-n', '--name',
+                    help='Bus name to introspect, required unless using file')
+    ap.add_argument('-p', '--path',
+                    help='Object path ')
+    ap.add_argument('--bus', default='SESSION',
+                    help='Bus to connect to for introspection (SESSION/SYSTEM)')
+    ap.add_argument('-f', '--file',
+                    help='XML file to use instead of D-Bus introspection')
+    ap.add_argument('-o', '--output',
+                    help='Output filename')
     args = ap.parse_args()
 
-    output = args.output or (args.path[1:].replace('/', '_') + '.py')
+    if not (args.file or args.name):
+        sys.exit("Either --name or --file is required")
 
-    generate(args.path, args.name, output, args.bus)
+    # If no --output, guess a (hopefully) reasonable name.
+    if args.output:
+        output = args.output
+    elif args.file:
+        output = os.path.splitext(os.path.basename(args.file))[0] + '.py'
+    elif args.path and len(args.path) > 1:
+        output = args.path[1:].replace('/', '_') + '.py'
+    else:  # e.g. path is '/'
+        output = args.name.replace('.', '_') + '.py'
+
+    if args.file:
+        generate_from_file(args.file, args.path, args.name, output)
+    else:
+        generate_from_introspection(args.path, args.name, output, args.bus)
 
 
 if __name__ == '__main__':
