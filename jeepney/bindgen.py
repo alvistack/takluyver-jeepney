@@ -61,8 +61,8 @@ class Interface:
         chunks = [INTERFACE_CLASS_TEMPLATE.format(
             cls_name=cls_name,
             interface=self.name,
-            path_default='' if self.path is None else '={self.path!r}',
-            name_default='' if self.bus_name is None else '={self.bus_name!r}'
+            path_default='' if self.path is None else f'={self.path!r}',
+            name_default='' if self.bus_name is None else f'={self.bus_name!r}'
         )]
         for method in self.methods:
             chunks.append(indent(method.make_code(), ' ' * 4))
