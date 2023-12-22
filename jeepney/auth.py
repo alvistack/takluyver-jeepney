@@ -59,7 +59,7 @@ class Authenticator:
     def __init__(self, enable_fds=False):
         self.enable_fds = enable_fds
         self.buffer = bytearray()
-        self._to_send = b'\0' + make_auth_external()
+        self._to_send = make_auth_external()
         self.state = ClientState.WaitingForOk
         self.error = None
 
