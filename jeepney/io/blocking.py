@@ -308,7 +308,7 @@ def prep_socket(addr, enable_fds=False, timeout=2.0) -> socket.socket:
 
     try:
         with_sock_deadline(sock.connect, addr)
-        authr = Authenticator(enable_fds=enable_fds)
+        authr = Authenticator(enable_fds=enable_fds, inc_null_byte=False)
         if hasattr(socket, 'SCM_CREDS'):
             sock.sendmsg([b'\0'], [(socket.SOL_SOCKET, socket.SCM_CREDS, bytes(512))])
         else:

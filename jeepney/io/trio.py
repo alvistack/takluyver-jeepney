@@ -195,7 +195,11 @@ async def open_dbus_connection(bus='SESSION', *, enable_fds=False) -> DBusConnec
     sock : trio.SocketStream = await trio.open_unix_socket(bus_addr)
 
     # Authentication
-    authr = Authenticator(enable_fds=enable_fds)
+    authr = Authenticator(enable_fds=enable_fds, inc_null_byte=False)
+    if hasattr(sock.socket, 'SCM_CREDS'):
+        sock.socket.sendmsg([b'\0'], [(sock.socket.SOL_SOCKET, sock.socket.SCM_CREDS, bytes(512))])
+    else
+        sock.socket.send(b'\0')
     for req_data in authr:
         await sock.send_all(req_data)
         authr.feed(await sock.receive_some())

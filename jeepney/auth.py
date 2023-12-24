@@ -54,12 +54,20 @@ class Authenticator:
     """Process data for the SASL authentication conversation
 
     If enable_fds is True, this includes negotiating support for passing
-    file descriptors.
+    file descriptors. If inc_null_byte is True, sends the '\0' byte
+    at the beginning of the negotiations, which was the past behavior,
+    but which prevents sending the SCM_CREDS ancillary data over the socket,
+    breaking authentication on *BSD; the caller should rather send that
+    null byte and ancillary data and pass inc_null_byte=False to prevent
+    it being done here.
     """
-    def __init__(self, enable_fds=False):
+    def __init__(self, enable_fds=False, inc_null_byte=True):
         self.enable_fds = enable_fds
         self.buffer = bytearray()
-        self._to_send = make_auth_external()
+        if inc_null_byte:
+            self._to_send = b'\0' + make_auth_external()
+        else:
+            self._to_send = make_auth_external()
         self.state = ClientState.WaitingForOk
         self.error = None
 
