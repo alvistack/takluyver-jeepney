@@ -1,0 +1,5 @@
+python-jeepney source: file-without-copyright-information
+python-jeepney source: no-debian-changes
+python-jeepney source: source-contains-prebuilt-windows-binary
+python-jeepney source: source-is-missing
+python-jeepney source: source-package-encodes-python-version
