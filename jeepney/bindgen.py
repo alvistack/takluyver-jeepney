@@ -137,9 +137,10 @@ def main():
     ap.add_argument('-n', '--name',
                     help='Bus name to introspect, required unless using file')
     ap.add_argument('-p', '--path',
-                    help='Object path ')
+                    help='Object path to introspect. If not specified, a path matching '
+                         'the name will be used, e.g. /org/freedesktop/Notifications for org.freedesktop.Notifications')
     ap.add_argument('--bus', default='SESSION',
-                    help='Bus to connect to for introspection (SESSION/SYSTEM)')
+                    help='Bus to connect to for introspection (SESSION/SYSTEM), default SESSION')
     ap.add_argument('-f', '--file',
                     help='XML file to use instead of D-Bus introspection')
     ap.add_argument('-o', '--output',
