@@ -1,6 +1,18 @@
 before_script:
   - pip install '.[test]'
 
+test_job_py312:
+  image: python:3.12
+  script:
+    - pytest
+  stage: test
+
+test_job_py311:
+  image: python:3.11
+  script:
+    - pytest
+  stage: test
+
 test_job_py310:
   image: python:3.10
   script:
@@ -26,7 +38,7 @@ test_job_py37:
   stage: test
 
 test_job_integration:
-  image: fedora:32
+  image: fedora:39
   before_script:
     - dnf install -y dbus-daemon python3-pip
     - pip install '.[test,trio]'

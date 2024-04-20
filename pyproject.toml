@@ -26,7 +26,6 @@ test = [
 ]
 trio = [
     "trio",
-    "async_generator; python_version == '3.6'",
 ]
 
 [tool.flit.metadata.urls]

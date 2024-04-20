@@ -2,14 +2,9 @@ import array
 import errno
 import logging
 import socket
-from contextlib import contextmanager
+from contextlib import asynccontextmanager, contextmanager
 from itertools import count
 from typing import Optional
-
-try:
-    from contextlib import asynccontextmanager  # Python 3.7
-except ImportError:
-    from async_generator import asynccontextmanager  # Backport for Python 3.6
 
 from outcome import Value, Error
 import trio
