@@ -310,8 +310,10 @@ def prep_socket(addr, enable_fds=False, timeout=2.0) -> socket.socket:
         with_sock_deadline(sock.connect, addr)
         authr = Authenticator(enable_fds=enable_fds, inc_null_byte=False)
         if hasattr(socket, 'SCM_CREDS'):
+            # BSD: send credentials message to authenticate (kernel fills in data)
             sock.sendmsg([b'\0'], [(socket.SOL_SOCKET, socket.SCM_CREDS, bytes(512))])
         else:
+            # Linux: no ancillary data needed, bus checks with SO_PEERCRED
             sock.send(b'\0')
         for req_data in authr:
             with_sock_deadline(sock.sendall, req_data)

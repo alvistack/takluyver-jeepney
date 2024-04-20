@@ -198,10 +198,12 @@ async def open_dbus_connection(bus='SESSION', *, enable_fds=False) -> DBusConnec
     # Authentication
     authr = Authenticator(enable_fds=enable_fds, inc_null_byte=False)
     if hasattr(socket, 'SCM_CREDS'):
+        # BSD: send credentials message to authenticate (kernel fills in data)
         await sock.socket.sendmsg(
             [b'\0'], [(socket.SOL_SOCKET, socket.SCM_CREDS, bytes(512))]
         )
     else:
+        # Linux: no ancillary data needed, bus checks with SO_PEERCRED
         await sock.send_all(b'\0')
     for req_data in authr:
         await sock.send_all(req_data)
