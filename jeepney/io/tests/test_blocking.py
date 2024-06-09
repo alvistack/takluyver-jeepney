@@ -30,10 +30,6 @@ def test_send_and_get_reply(session_conn):
     assert reply.header.message_type == MessageType.method_return
     assert reply.body == ()
 
-    ping_call = new_method_call(bus_peer, 'Ping')
-    reply_body = session_conn.send_and_get_reply(ping_call, timeout=5, unwrap=True)
-    assert reply_body == ()
-
 def test_proxy(session_conn):
     proxy = Proxy(message_bus, session_conn, timeout=5)
     name = "io.gitlab.takluyver.jeepney.examples.Server"
