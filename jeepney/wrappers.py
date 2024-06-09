@@ -171,6 +171,9 @@ class MessageGenerator:
     jeepney.bindgen can automatically create subclasses using introspection.
     """
     def __init__(self, object_path, bus_name):
+        ObjectPathType().check_data(object_path)
+        check_bus_name(bus_name)
+
         self.object_path = object_path
         self.bus_name = bus_name
 
