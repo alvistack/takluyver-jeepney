@@ -53,3 +53,22 @@ def test_bad_interface():
         DBusAddress(obj, busname, 'com')
 
 
+def test_bad_member_name():
+    addr = DBusAddress(
+        '/org/freedesktop/DBus',
+        bus_name='org.freedesktop.DBus',
+        interface='org.freedesktop.DBus',
+    )
+    new_method_call(addr, 'Hello')
+
+    with pytest.raises(ValueError, match='too long'):
+        new_method_call(addr, 'Hell' + ('o' * 256))
+
+    with pytest.raises(ValueError):
+        new_method_call(addr, 'org.Hello')
+
+    with pytest.raises(ValueError):
+        new_method_call(addr, '9Hello')
+
+    with pytest.raises(ValueError):
+        new_method_call(addr, '')

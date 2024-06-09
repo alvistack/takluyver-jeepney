@@ -23,7 +23,8 @@ bus_name_pat = re.compile(
 
 def check_bus_name(name):
     if len(name) > 255:
-        raise ValueError(f"Bus name ({name[:8] + '...'!r}) is too long (> 255 characters)")
+        abbr = name[:8] + '...'
+        raise ValueError(f"Bus name ({abbr!r}) is too long (> 255 characters)")
     if not bus_name_pat.match(name):
         raise ValueError(f"Bus name ({name!r}) is not valid")
 
@@ -31,11 +32,20 @@ interface_pat = re.compile(r'[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)+$'
 
 def check_interface(name):
     if len(name) > 255:
-        raise ValueError(
-            f"Interface name ({name[:8] + '...'!r}) is too long (> 255 characters)"
-        )
+        abbr = name[:8] + '...'
+        raise ValueError(f"Interface name ({abbr!r}) is too long (> 255 characters)")
     if not interface_pat.match(name):
         raise ValueError(f"Interface name ({name!r}) is not valid")
+
+member_name_pat = re.compile(r'[A-Za-z_][A-Za-z0-9_]*$')
+
+def check_member_name(name):
+    if len(name) > 255:
+        abbr = name[:8] + '...'
+        raise ValueError(f"Member name ({abbr!r}) is too long (> 255 characters)")
+    if not member_name_pat.match(name):
+        raise ValueError(f"Member name ({name!r} is not valid")
+
 
 class DBusAddress:
     """This identifies the object and interface a message is for.
@@ -87,6 +97,7 @@ def new_method_call(remote_obj, method, signature=None, body=()):
     :param str signature: The DBus signature of the body data
     :param tuple body: Body data (i.e. method parameters)
     """
+    check_member_name(method)
     header = new_header(MessageType.method_call)
     header.fields[HeaderFields.path] = remote_obj.object_path
     if remote_obj.bus_name is None:
@@ -142,6 +153,7 @@ def new_signal(emitter, signal, signature=None, body=()):
     :param str signature: The DBus signature of the body data
     :param tuple body: Body data
     """
+    check_member_name(signal)
     header = new_header(MessageType.signal)
     header.fields[HeaderFields.path] = emitter.object_path
     if emitter.interface is None:
