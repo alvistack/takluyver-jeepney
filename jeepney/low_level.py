@@ -1,6 +1,7 @@
+import string
+import struct
 from collections import deque
 from enum import Enum, IntEnum, IntFlag
-import struct
 from typing import Optional
 
 class SizeLimitError(ValueError):
@@ -156,9 +157,12 @@ class StringType:
         assert buf[end:end + 1] == b'\0'
         return val, end + 1
 
-    def serialise(self, data, pos, endianness, fds=None):
+    def check_data(self, data):
         if not isinstance(data, str):
             raise TypeError("Expected str, not {!r}".format(data))
+
+    def serialise(self, data, pos, endianness, fds=None):
+        self.check_data(data)
         encoded = data.encode('utf-8')
         len_data = self.length_type.serialise(len(encoded), pos, endianness)
         return len_data + encoded + b'\0'
@@ -171,9 +175,28 @@ class StringType:
                and (self.length_type == other.length_type)
 
 
+class ObjectPathType(StringType):
+    def __init__(self):
+        super().__init__(simple_types['u'])
+
+    def check_data(self, data):
+        super().check_data(data)
+        if not data.startswith('/'):
+            raise ValueError(f"Object path ({data!r}) must start with /")
+        if data.endswith('/') and len(data) > 1:
+            raise ValueError(f"Object path ({data!r}) cannot end with /")
+        if '//' in data:
+            raise ValueError(f"Object path ({data!r}) cannot contain double /")
+        valid_chars = string.ascii_letters + string.digits + '/_'
+        if any(c not in valid_chars for c in data):
+            raise ValueError(
+                f"Object path ({data!r}) can only contain A-Z, a-z, 0-9, / and _"
+            )
+
+
 simple_types.update({
     's': StringType(simple_types['u']),  # String
-    'o': StringType(simple_types['u']),  # Object path
+    'o': ObjectPathType(),               # Object path
     'g': StringType(simple_types['y']),  # Signature
 })
 

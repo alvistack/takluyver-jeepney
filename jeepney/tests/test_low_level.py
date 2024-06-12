@@ -85,3 +85,17 @@ def test_array_limit():
     a.serialise(fake_list(100), 0, Endianness.little)
     with pytest.raises(SizeLimitError):
         a.serialise(fake_list(2**23 + 1), 0, Endianness.little)
+
+
+def test_bad_object_path():
+    with pytest.raises(ValueError):
+        ObjectPathType().check_data('org/freedesktop/DBus')
+
+    with pytest.raises(ValueError):
+        ObjectPathType().check_data('/org/freedesktop/DBus/')
+
+    with pytest.raises(ValueError):
+        ObjectPathType().check_data('/org//freedesktop/DBus')
+
+    with pytest.raises(ValueError):
+        ObjectPathType().check_data('/org/freedesktop/DBüs')  # Non-ASCII character
