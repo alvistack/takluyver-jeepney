@@ -176,6 +176,9 @@ class MatchRule:
         if self.message_type:
             pairs.append(('type', self.message_type.name))
 
+        if self.path_namespace:
+            pairs.append(('path_namespace', self.path_namespace))
+
         if self.eavesdrop:
             pairs.append(('eavesdrop', 'true'))
 
