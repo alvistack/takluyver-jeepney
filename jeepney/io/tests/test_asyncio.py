@@ -1,6 +1,10 @@
 import asyncio
+import sys
 
-import async_timeout
+if sys.version_info >= (3, 11):
+    from asyncio import timeout
+else:
+    from async_timeout import timeout
 import pytest
 import pytest_asyncio
 
@@ -85,7 +89,7 @@ async def test_recv_after_connect():
     conn = await open_dbus_connection(bus='SESSION')
     try:
         with pytest.raises(asyncio.TimeoutError):
-            async with async_timeout.timeout(0):
+            async with timeout(0):
                 await conn.receive()
     finally:
         await conn.close()
