@@ -44,7 +44,7 @@ test_job_py37:
   stage: test
 
 test_job_integration:
-  image: fedora:39
+  image: fedora:41
   before_script:
     - dnf install -y dbus-daemon python3-pip
     - pip install '.[test,trio]'
