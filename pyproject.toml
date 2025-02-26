@@ -32,3 +32,7 @@ trio = [
 [project.urls]
 Documentation = "https://jeepney.readthedocs.io/en/latest/"
 Source = "https://gitlab.com/takluyver/jeepney"
+
+[tool.flit.sdist]
+include = ["docs", "examples", "pytest.ini"]
+exclude = ["docs/_build"]
