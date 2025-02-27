@@ -1,6 +1,32 @@
 Release notes
 =============
 
+0.9
+---
+
+2025-02-27
+
+* Fixed subscribing to messages on the message bus with a ``path_namespace``
+  parameter (:mr:`38`)
+* Fixed authentication on (some?) BSDs, using SCM_CREDS (:mr:`33`), for all
+  integrations except for asyncio (which does not expose ``sendmsg``).
+* :class:`~.DBusAddress` and message generators will now raise :exc:`ValueError`
+  if given invalid D-Bus names - bus names, object paths, or interface names
+  (:mr:`36`). Previously these could easily be sent in messages, resulting in
+  the bus closing the connection.
+* Bindings can now be :doc:`generated <bindgen>` from D-Bus XML in a file
+  with the new :option:`--file` option (:mr:`34`).
+* The ``async_timeout`` package is no longer required for running the tests on
+  Python 3.11 or above (:mr:`39`).
+
+Breaking changes
+~~~~~~~~~~~~~~~~
+
+* Removed the deprecated ``connection.router`` API in the blocking IO
+  integration (:mr:`40`).
+* Removed the deprecated ``unwrap`` parameter from ``send_and_get_reply`` in
+  the blocking integration (:mr:`37`).
+
 0.8
 ---
 

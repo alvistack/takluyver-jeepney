@@ -34,7 +34,13 @@ extensions = [
     'sphinx.ext.autodoc',
     'sphinx.ext.viewcode',
     'sphinx.ext.intersphinx',
+    'sphinx.ext.extlinks',
 ]
+
+extlinks = {
+    'issue': ('https://gitlab.com/takluyver/jeepney/-/issues/%s', "issue #%s"),
+    'mr': ('https://gitlab.com/takluyver/jeepney/-/merge_requests/%s', "MR !%s"),
+}
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ['_templates']
