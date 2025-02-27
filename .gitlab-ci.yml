@@ -63,6 +63,22 @@ build-job:
     paths:
       - "dist/"
 
+generate-pypi-attestations:
+  stage: build
+  image: python:3-bookworm
+  needs:
+  - job: build-job
+    artifacts: true
+  id_tokens:
+    SIGSTORE_ID_TOKEN:
+      aud: sigstore
+  script:
+    - python -m pip install -U pypi-attestations
+    - python -m pypi_attestations sign dist/*
+  artifacts:
+    paths:
+      - "dist/"
+
 publish-job:
   stage: deploy
   rules:
@@ -70,6 +86,7 @@ publish-job:
   image: python:3-bookworm
   dependencies:
     - build-job
+    - generate-pypi-attestations
   id_tokens:
     PYPI_ID_TOKEN:
       aud: pypi
@@ -77,4 +94,4 @@ publish-job:
     - python -m pip install -U twine
     # With no token specified, this should use trusted publishing to
     # authenticate to PyPI:
-    - twine upload dist/*
+    - twine upload --verbose --attestations dist/*
